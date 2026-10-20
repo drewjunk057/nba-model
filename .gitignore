@@ -1,6 +1,6 @@
 # Regenerated on every machine
-data/
-models/
+/data/
+/models/
 __pycache__/
 *.pyc
 .venv/

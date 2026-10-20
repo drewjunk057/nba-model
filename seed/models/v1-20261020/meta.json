@@ -1,0 +1,807 @@
+{
+  "model_version": "v1-20261020",
+  "trained_at": "2026-10-20T09:32:42",
+  "data_source": "real",
+  "trained_through": "2026-04-12",
+  "trained_as_of": "2026-10-20",
+  "n_train": {
+    "win": 6153,
+    "spread": 6091,
+    "total": 6153
+  },
+  "features": {
+    "win": [
+      "home_gp",
+      "home_off_rtg",
+      "home_def_rtg",
+      "home_net_rtg",
+      "home_pace",
+      "home_efg",
+      "home_tov_pct",
+      "home_orb_pct",
+      "home_ft_rate",
+      "home_opp_efg",
+      "home_sos",
+      "home_roll_off_5",
+      "home_roll_def_5",
+      "home_roll_net_5",
+      "home_roll_off_10",
+      "home_roll_def_10",
+      "home_roll_net_10",
+      "home_roll_off_20",
+      "home_roll_def_20",
+      "home_roll_net_20",
+      "home_roll_pace_10",
+      "home_win_pct_10",
+      "home_win_streak",
+      "home_days_rest",
+      "home_b2b",
+      "home_games_last_7",
+      "home_road_trip_len",
+      "home_travel_km",
+      "home_star_out",
+      "home_star_questionable",
+      "home_missing_minutes",
+      "home_rotation_continuity",
+      "away_gp",
+      "away_off_rtg",
+      "away_def_rtg",
+      "away_net_rtg",
+      "away_pace",
+      "away_efg",
+      "away_tov_pct",
+      "away_orb_pct",
+      "away_ft_rate",
+      "away_opp_efg",
+      "away_sos",
+      "away_roll_off_5",
+      "away_roll_def_5",
+      "away_roll_net_5",
+      "away_roll_off_10",
+      "away_roll_def_10",
+      "away_roll_net_10",
+      "away_roll_off_20",
+      "away_roll_def_20",
+      "away_roll_net_20",
+      "away_roll_pace_10",
+      "away_win_pct_10",
+      "away_win_streak",
+      "away_days_rest",
+      "away_b2b",
+      "away_games_last_7",
+      "away_road_trip_len",
+      "away_travel_km",
+      "away_star_out",
+      "away_star_questionable",
+      "away_missing_minutes",
+      "away_rotation_continuity",
+      "net_rtg_diff",
+      "roll_net_10_diff",
+      "rest_diff",
+      "travel_diff",
+      "form_diff",
+      "streak_diff",
+      "continuity_diff",
+      "missing_minutes_diff",
+      "pace_avg",
+      "closing_home_spread",
+      "closing_total",
+      "mkt_home_prob"
+    ],
+    "spread": [
+      "home_gp",
+      "home_off_rtg",
+      "home_def_rtg",
+      "home_net_rtg",
+      "home_pace",
+      "home_efg",
+      "home_tov_pct",
+      "home_orb_pct",
+      "home_ft_rate",
+      "home_opp_efg",
+      "home_sos",
+      "home_roll_off_5",
+      "home_roll_def_5",
+      "home_roll_net_5",
+      "home_roll_off_10",
+      "home_roll_def_10",
+      "home_roll_net_10",
+      "home_roll_off_20",
+      "home_roll_def_20",
+      "home_roll_net_20",
+      "home_roll_pace_10",
+      "home_win_pct_10",
+      "home_win_streak",
+      "home_days_rest",
+      "home_b2b",
+      "home_games_last_7",
+      "home_road_trip_len",
+      "home_travel_km",
+      "home_star_out",
+      "home_star_questionable",
+      "home_missing_minutes",
+      "home_rotation_continuity",
+      "away_gp",
+      "away_off_rtg",
+      "away_def_rtg",
+      "away_net_rtg",
+      "away_pace",
+      "away_efg",
+      "away_tov_pct",
+      "away_orb_pct",
+      "away_ft_rate",
+      "away_opp_efg",
+      "away_sos",
+      "away_roll_off_5",
+      "away_roll_def_5",
+      "away_roll_net_5",
+      "away_roll_off_10",
+      "away_roll_def_10",
+      "away_roll_net_10",
+      "away_roll_off_20",
+      "away_roll_def_20",
+      "away_roll_net_20",
+      "away_roll_pace_10",
+      "away_win_pct_10",
+      "away_win_streak",
+      "away_days_rest",
+      "away_b2b",
+      "away_games_last_7",
+      "away_road_trip_len",
+      "away_travel_km",
+      "away_star_out",
+      "away_star_questionable",
+      "away_missing_minutes",
+      "away_rotation_continuity",
+      "net_rtg_diff",
+      "roll_net_10_diff",
+      "rest_diff",
+      "travel_diff",
+      "form_diff",
+      "streak_diff",
+      "continuity_diff",
+      "missing_minutes_diff",
+      "pace_avg",
+      "closing_home_spread",
+      "closing_total",
+      "mkt_home_prob",
+      "internal_spread",
+      "spread_gap",
+      "fav_rating_gap"
+    ],
+    "total": [
+      "home_gp",
+      "home_off_rtg",
+      "home_def_rtg",
+      "home_net_rtg",
+      "home_pace",
+      "home_efg",
+      "home_tov_pct",
+      "home_orb_pct",
+      "home_ft_rate",
+      "home_opp_efg",
+      "home_sos",
+      "home_roll_off_5",
+      "home_roll_def_5",
+      "home_roll_net_5",
+      "home_roll_off_10",
+      "home_roll_def_10",
+      "home_roll_net_10",
+      "home_roll_off_20",
+      "home_roll_def_20",
+      "home_roll_net_20",
+      "home_roll_pace_10",
+      "home_win_pct_10",
+      "home_win_streak",
+      "home_days_rest",
+      "home_b2b",
+      "home_games_last_7",
+      "home_road_trip_len",
+      "home_travel_km",
+      "home_star_out",
+      "home_star_questionable",
+      "home_missing_minutes",
+      "home_rotation_continuity",
+      "away_gp",
+      "away_off_rtg",
+      "away_def_rtg",
+      "away_net_rtg",
+      "away_pace",
+      "away_efg",
+      "away_tov_pct",
+      "away_orb_pct",
+      "away_ft_rate",
+      "away_opp_efg",
+      "away_sos",
+      "away_roll_off_5",
+      "away_roll_def_5",
+      "away_roll_net_5",
+      "away_roll_off_10",
+      "away_roll_def_10",
+      "away_roll_net_10",
+      "away_roll_off_20",
+      "away_roll_def_20",
+      "away_roll_net_20",
+      "away_roll_pace_10",
+      "away_win_pct_10",
+      "away_win_streak",
+      "away_days_rest",
+      "away_b2b",
+      "away_games_last_7",
+      "away_road_trip_len",
+      "away_travel_km",
+      "away_star_out",
+      "away_star_questionable",
+      "away_missing_minutes",
+      "away_rotation_continuity",
+      "net_rtg_diff",
+      "roll_net_10_diff",
+      "rest_diff",
+      "travel_diff",
+      "form_diff",
+      "streak_diff",
+      "continuity_diff",
+      "missing_minutes_diff",
+      "pace_avg",
+      "closing_home_spread",
+      "closing_total",
+      "mkt_home_prob",
+      "home_exp_ortg",
+      "away_exp_ortg",
+      "off_def_interaction",
+      "pace_interaction",
+      "expected_possessions",
+      "internal_total",
+      "total_gap",
+      "fatigue_scoring"
+    ]
+  },
+  "sigma_total": 18.373398855178163,
+  "importances": {
+    "win": {
+      "mkt_home_prob": 0.3819,
+      "closing_home_spread": 0.1903,
+      "net_rtg_diff": 0.0262,
+      "away_orb_pct": 0.0134,
+      "away_roll_net_5": 0.0121,
+      "home_tov_pct": 0.0116,
+      "travel_diff": 0.0113,
+      "home_def_rtg": 0.0105,
+      "continuity_diff": 0.0099,
+      "home_missing_minutes": 0.0097,
+      "home_roll_pace_10": 0.0096,
+      "home_orb_pct": 0.009,
+      "home_roll_net_5": 0.0088,
+      "away_efg": 0.0087,
+      "away_def_rtg": 0.0086,
+      "away_ft_rate": 0.0085,
+      "missing_minutes_diff": 0.0085,
+      "home_opp_efg": 0.0083,
+      "away_net_rtg": 0.0081,
+      "pace_avg": 0.008
+    },
+    "spread": {
+      "home_sos": 0.0406,
+      "home_tov_pct": 0.0392,
+      "away_roll_off_5": 0.0342,
+      "away_roll_net_5": 0.0292,
+      "home_opp_efg": 0.0276,
+      "home_roll_pace_10": 0.0264,
+      "away_pace": 0.0259,
+      "away_roll_off_10": 0.0257,
+      "home_rotation_continuity": 0.0248,
+      "away_orb_pct": 0.0247,
+      "continuity_diff": 0.0235,
+      "home_missing_minutes": 0.0227,
+      "away_roll_pace_10": 0.0222,
+      "closing_total": 0.0219,
+      "away_sos": 0.0196,
+      "away_efg": 0.0193,
+      "home_roll_def_20": 0.0184,
+      "missing_minutes_diff": 0.0182,
+      "away_def_rtg": 0.0172,
+      "away_tov_pct": 0.0165
+    },
+    "total": {
+      "closing_total": 0.4726,
+      "total_gap": 0.0515,
+      "internal_total": 0.0394,
+      "pace_avg": 0.0365,
+      "pace_interaction": 0.0309,
+      "expected_possessions": 0.0158,
+      "away_missing_minutes": 0.0132,
+      "home_roll_off_20": 0.0115,
+      "off_def_interaction": 0.0115,
+      "away_opp_efg": 0.0101,
+      "home_roll_def_10": 0.0101,
+      "away_roll_pace_10": 0.0099,
+      "away_pace": 0.0098,
+      "away_sos": 0.0097,
+      "home_sos": 0.0086,
+      "away_gp": 0.0086,
+      "home_roll_off_10": 0.0081,
+      "home_ft_rate": 0.008,
+      "missing_minutes_diff": 0.0075,
+      "home_roll_def_20": 0.007
+    }
+  },
+  "evaluation": {
+    "test_season": "2025-26",
+    "train_seasons": [
+      "2021-22",
+      "2022-23",
+      "2023-24",
+      "2024-25"
+    ],
+    "early_stop_season": "2024-25",
+    "models": {
+      "win": {
+        "n": 1231,
+        "accuracy": 0.6953696181965882,
+        "brier": 0.19868758876677614,
+        "log_loss": 0.5818150295930352,
+        "calibration": [
+          {
+            "bin": 0.15000000000000002,
+            "predicted": 0.17847512922966627,
+            "actual": 0.12121212121212122,
+            "n": 66
+          },
+          {
+            "bin": 0.25,
+            "predicted": 0.254874261402472,
+            "actual": 0.24242424242424243,
+            "n": 132
+          },
+          {
+            "bin": 0.35000000000000003,
+            "predicted": 0.35204034770458725,
+            "actual": 0.34959349593495936,
+            "n": 123
+          },
+          {
+            "bin": 0.45,
+            "predicted": 0.44971356370420373,
+            "actual": 0.45263157894736844,
+            "n": 190
+          },
+          {
+            "bin": 0.55,
+            "predicted": 0.5515513612572028,
+            "actual": 0.5714285714285714,
+            "n": 161
+          },
+          {
+            "bin": 0.6500000000000001,
+            "predicted": 0.6449661598404806,
+            "actual": 0.6650246305418719,
+            "n": 203
+          },
+          {
+            "bin": 0.75,
+            "predicted": 0.7513410733995785,
+            "actual": 0.7727272727272727,
+            "n": 198
+          },
+          {
+            "bin": 0.8500000000000001,
+            "predicted": 0.8430926027891187,
+            "actual": 0.8481012658227848,
+            "n": 158
+          }
+        ],
+        "rounds": 137,
+        "market_baseline": {
+          "n": 1225,
+          "accuracy": 0.6938775510204082,
+          "brier": 0.19399306988036688,
+          "log_loss": 0.5691137033513217,
+          "calibration": [
+            {
+              "bin": 0.05,
+              "predicted": 0.0822407138151883,
+              "actual": 0.0,
+              "n": 16
+            },
+            {
+              "bin": 0.15000000000000002,
+              "predicted": 0.1566325570816917,
+              "actual": 0.13043478260869565,
+              "n": 69
+            },
+            {
+              "bin": 0.25,
+              "predicted": 0.25330105975480754,
+              "actual": 0.21,
+              "n": 100
+            },
+            {
+              "bin": 0.35000000000000003,
+              "predicted": 0.35173645086996796,
+              "actual": 0.3611111111111111,
+              "n": 144
+            },
+            {
+              "bin": 0.45,
+              "predicted": 0.44789180168113796,
+              "actual": 0.48044692737430167,
+              "n": 179
+            },
+            {
+              "bin": 0.55,
+              "predicted": 0.5538948753242537,
+              "actual": 0.5314285714285715,
+              "n": 175
+            },
+            {
+              "bin": 0.6500000000000001,
+              "predicted": 0.6508442898599003,
+              "actual": 0.6966292134831461,
+              "n": 178
+            },
+            {
+              "bin": 0.75,
+              "predicted": 0.7483257730770683,
+              "actual": 0.7663043478260869,
+              "n": 184
+            },
+            {
+              "bin": 0.8500000000000001,
+              "predicted": 0.8479922726989644,
+              "actual": 0.8211920529801324,
+              "n": 151
+            },
+            {
+              "bin": 0.95,
+              "predicted": 0.9209807137245731,
+              "actual": 1.0,
+              "n": 29
+            }
+          ],
+          "model_brier_same_games": 0.1976005301100336
+        },
+        "logistic_baseline": {
+          "n": 1231,
+          "accuracy": 0.69374492282697,
+          "brier": 0.1975546165330093,
+          "log_loss": 0.5773356071294414,
+          "calibration": [
+            {
+              "bin": 0.05,
+              "predicted": 0.07682196086586367,
+              "actual": 0.0,
+              "n": 22
+            },
+            {
+              "bin": 0.15000000000000002,
+              "predicted": 0.15559874608474727,
+              "actual": 0.1267605633802817,
+              "n": 71
+            },
+            {
+              "bin": 0.25,
+              "predicted": 0.24609616305535748,
+              "actual": 0.2764227642276423,
+              "n": 123
+            },
+            {
+              "bin": 0.35000000000000003,
+              "predicted": 0.354113473980795,
+              "actual": 0.41134751773049644,
+              "n": 141
+            },
+            {
+              "bin": 0.45,
+              "predicted": 0.4491328280963199,
+              "actual": 0.4473684210526316,
+              "n": 152
+            },
+            {
+              "bin": 0.55,
+              "predicted": 0.555754584570624,
+              "actual": 0.5642857142857143,
+              "n": 140
+            },
+            {
+              "bin": 0.6500000000000001,
+              "predicted": 0.6505970983362575,
+              "actual": 0.6176470588235294,
+              "n": 170
+            },
+            {
+              "bin": 0.75,
+              "predicted": 0.7515587673034536,
+              "actual": 0.7647058823529411,
+              "n": 221
+            },
+            {
+              "bin": 0.8500000000000001,
+              "predicted": 0.8447805063450492,
+              "actual": 0.83125,
+              "n": 160
+            },
+            {
+              "bin": 0.95,
+              "predicted": 0.9187140919691068,
+              "actual": 0.9032258064516129,
+              "n": 31
+            }
+          ]
+        }
+      },
+      "spread": {
+        "n": 1230,
+        "accuracy": 0.4869918699186992,
+        "brier": 0.2501908045386598,
+        "log_loss": 0.6935288139600734,
+        "calibration": [
+          {
+            "bin": 0.45,
+            "predicted": 0.49480856451639155,
+            "actual": 0.5132231404958678,
+            "n": 1210
+          },
+          {
+            "bin": 0.55,
+            "predicted": 0.5005174783223638,
+            "actual": 0.5,
+            "n": 20
+          }
+        ],
+        "rounds": 1,
+        "coin_flip_brier": 0.25,
+        "bets": {
+          "bets": 0,
+          "win_rate": null,
+          "units": 0.0,
+          "roi": null
+        }
+      },
+      "total": {
+        "n": 1231,
+        "n_with_line": 1229,
+        "rmse": 18.38811827088451,
+        "mae": 14.615195995118848,
+        "model_rmse_with_line": 18.38821750180701,
+        "market_rmse": 18.329487107945983,
+        "market_mae": 14.572416598860862,
+        "mean_edge_vs_market": 1.643071304741055,
+        "over_under": {
+          "n": 1229,
+          "accuracy": 0.5077298616761595,
+          "brier": 0.25074334577313273,
+          "log_loss": 0.6946630857205661,
+          "calibration": [
+            {
+              "bin": 0.35000000000000003,
+              "predicted": 0.38102929496673116,
+              "actual": 0.46153846153846156,
+              "n": 13
+            },
+            {
+              "bin": 0.45,
+              "predicted": 0.4657580882638133,
+              "actual": 0.4883720930232558,
+              "n": 688
+            },
+            {
+              "bin": 0.55,
+              "predicted": 0.532695673316041,
+              "actual": 0.5,
+              "n": 512
+            },
+            {
+              "bin": 0.6500000000000001,
+              "predicted": 0.613585334253679,
+              "actual": 0.5625,
+              "n": 16
+            }
+          ]
+        },
+        "over_under_bets": {
+          "bets": 453,
+          "win_rate": 0.5143487858719646,
+          "units": -8.18,
+          "roi": -0.018061408789885623
+        },
+        "sigma": 18.373398855178163,
+        "rounds": 139
+      }
+    },
+    "best_rounds": {
+      "win": 137,
+      "spread": 1,
+      "total": 139
+    },
+    "sigma": 18.373398855178163
+  },
+  "drift_reference": {
+    "net_rtg_diff": {
+      "edges": [
+        -21.482217866500775,
+        -8.014187765184184,
+        -5.17352322273967,
+        -3.014621283874359,
+        -1.422705929608286,
+        -0.07473188839395561,
+        1.356882234993936,
+        3.004659816938848,
+        5.061839451163914,
+        7.8625166814685485,
+        20.448258186863825
+      ],
+      "freq": [
+        0.10011376564277588,
+        0.09995124329595319,
+        0.09995124329595319,
+        0.09995124329595319,
+        0.09995124329595319,
+        0.10011376564277588,
+        0.09995124329595319,
+        0.09995124329595319,
+        0.09995124329595319,
+        0.10011376564277588
+      ]
+    },
+    "closing_home_spread": {
+      "edges": [
+        -24.5,
+        -11.5,
+        -8.5,
+        -6.5,
+        -4.5,
+        -3.0,
+        -1.0,
+        2.5,
+        4.5,
+        7.5,
+        21.5
+      ],
+      "freq": [
+        0.08567712567062266,
+        0.09689481385140628,
+        0.09656966346935458,
+        0.10860022760526744,
+        0.09819541537961307,
+        0.10925052836937084,
+        0.08437652414241587,
+        0.09673223866038043,
+        0.10794992684116404,
+        0.1157535360104048
+      ]
+    },
+    "closing_total": {
+      "edges": [
+        199.0,
+        215.0,
+        219.0,
+        222.0,
+        224.5,
+        227.0,
+        229.5,
+        232.0,
+        234.5,
+        238.5,
+        262.0
+      ],
+      "freq": [
+        0.0959349593495935,
+        0.10195121951219512,
+        0.09300813008130081,
+        0.08764227642276423,
+        0.11479674796747967,
+        0.09024390243902439,
+        0.1094308943089431,
+        0.08113821138211381,
+        0.11479674796747967,
+        0.11105691056910569
+      ]
+    },
+    "pace_avg": {
+      "edges": [
+        98.03298245614036,
+        100.10989824989825,
+        100.63911066983685,
+        101.05314229295402,
+        101.42599775971094,
+        101.77025015634771,
+        102.12243898130112,
+        102.48399575302746,
+        102.9245832592739,
+        103.58202045356302,
+        106.13233449477352
+      ],
+      "freq": [
+        0.10011376564277588,
+        0.09995124329595319,
+        0.09995124329595319,
+        0.09995124329595319,
+        0.09995124329595319,
+        0.10011376564277588,
+        0.09995124329595319,
+        0.09995124329595319,
+        0.09995124329595319,
+        0.10011376564277588
+      ]
+    },
+    "home_missing_minutes": {
+      "edges": [
+        0.0,
+        0.041980000000000066,
+        0.091,
+        0.1252,
+        0.1533,
+        0.2108,
+        0.25924,
+        0.3271,
+        0.43816000000000005,
+        1.0928
+      ],
+      "freq": [
+        0.20006500893872908,
+        0.09978872094913051,
+        0.09995124329595319,
+        0.10011376564277588,
+        0.09995124329595319,
+        0.10011376564277588,
+        0.09978872094913051,
+        0.10011376564277588,
+        0.10011376564277588
+      ]
+    },
+    "spread_gap": {
+      "edges": [
+        -22.478491397681353,
+        -5.522540281125706,
+        -3.810712418051896,
+        -2.5451937783164693,
+        -1.5513697940323894,
+        -0.6727395833926195,
+        0.21399876969169948,
+        1.282745803893686,
+        2.411053873679281,
+        4.138959104812247,
+        17.614930143763733
+      ],
+      "freq": [
+        0.09998374248089742,
+        0.09998374248089742,
+        0.09998374248089742,
+        0.09998374248089742,
+        0.09998374248089742,
+        0.10014631767192327,
+        0.09982116728987156,
+        0.09998374248089742,
+        0.09998374248089742,
+        0.10014631767192327
+      ]
+    },
+    "total_gap": {
+      "edges": [
+        -23.088183516109012,
+        -8.663366487799943,
+        -4.85020035211658,
+        -2.485261611586124,
+        -0.7789237813822631,
+        0.8161114287976119,
+        2.541547070048541,
+        4.2462850773958625,
+        6.283259826676226,
+        9.06694903149905,
+        29.605149153338147
+      ],
+      "freq": [
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1
+      ]
+    }
+  }
+}
