@@ -1,0 +1,13 @@
+# Regenerated on every machine
+data/
+models/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Local-only helpers
+_to_delete/
+probe.bat
+scripts/probe.py
+.claude/
