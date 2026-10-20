@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from app.config import DATA_DIR, DB_PATH, MODEL_DIR, ROOT
 
@@ -41,12 +42,54 @@ def copy_seed():
             print(f"Installed {n} seasons of saved game data.")
 
 
+TASK_NAME = "NBA Predictor update"
+
+
+def schedule_updates():
+    """Register (or refresh) a Windows scheduled task that updates the data at
+    4:00 AM and 2:30 PM every day, hidden, catching up after sleep."""
+    import os
+    import subprocess as sp
+    from datetime import datetime
+    if os.name != "nt":
+        return
+    status = DATA_DIR / "schedule_status.txt"
+    exe = Path(sys.executable)
+    pyw = exe.with_name("pythonw.exe")
+    exe = pyw if pyw.exists() else exe
+    q = lambda v: "'" + str(v).replace("'", "''") + "'"
+    ps = "; ".join([
+        f"$a = New-ScheduledTaskAction -Execute {q(exe)} -Argument '-m scripts.scheduled_update' -WorkingDirectory {q(ROOT)}",
+        "$t1 = New-ScheduledTaskTrigger -Daily -At 4:00AM",
+        "$t2 = New-ScheduledTaskTrigger -Daily -At 2:30PM",
+        "$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries "
+        "-DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1)",
+        f"Register-ScheduledTask -TaskName {q(TASK_NAME)} -Action $a -Trigger $t1,$t2 -Settings $s "
+        "-Description 'Updates NBA Predictor games, lines and injuries, grades picks and logs new ones.' "
+        "-Force | Out-Null",
+        f"(Get-ScheduledTask -TaskName {q(TASK_NAME)}).State",
+    ])
+    try:
+        r = sp.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+                   capture_output=True, text=True, timeout=60)
+        ok = r.returncode == 0
+        status.write_text(f"{datetime.now():%Y-%m-%d %H:%M}  {'registered' if ok else 'FAILED'}  "
+                          f"exe={exe}\n{r.stdout}{r.stderr}", encoding="utf-8")
+        if ok:
+            print("Automatic updates are on: 4:00 AM and 2:30 PM daily.")
+        else:
+            print("Couldn't set up automatic updates (details in data\\schedule_status.txt).")
+    except Exception as e:  # never block the app over this
+        status.write_text(f"{datetime.now():%Y-%m-%d %H:%M}  FAILED  {e!r}", encoding="utf-8")
+
+
 def run_update(args):
     return subprocess.call([sys.executable, "-m", "scripts.update_data", *args], cwd=ROOT)
 
 
 def main():
     copy_seed()
+    schedule_updates()
     have_models = (MODEL_DIR / "current.json").exists()
     have_db = DB_PATH.exists() and SUMMARY.exists()
 

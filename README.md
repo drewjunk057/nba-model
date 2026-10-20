@@ -18,6 +18,10 @@ FastAPI serves the predictions and a dashboard; a nightly job ingests results, s
 
 The first run installs the packages (a few minutes), sets up the saved models and five seasons of games from `seed/`, downloads today's lines, injuries and rosters, and opens the dashboard at http://localhost:8000. After that, `start.bat` opens in seconds and refreshes the data whenever it's more than 3 hours old. Keep the black window open while you use the app.
 
+**Automatic updates.** The first time `start.bat` runs, it sets up a Windows scheduled task ("NBA Predictor update") that runs hidden at 4:00 AM and 2:30 PM every day, and catches up if the PC was asleep. It grades finished picks, logs picks for the day's games with the latest lines and injuries, and retrains weekly. The app doesn't need to be open. To turn it off, delete the task in Task Scheduler.
+
+**Our record.** The History tab keeps a running record of every pick: winners, against the spread and over/under, graded against the line posted when the pick was made, with units at −110.
+
 To get model updates later, download the repo again (or `git pull`). Your local data in `data/` and `models/` isn't touched.
 
 **For the owner:** `Publish to GitHub.bat` packs the current models and game history into `seed/` and pushes everything to `github.com/drewjunk057/nba-model`.

@@ -107,7 +107,8 @@ def _startup():
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    # always serve the newest dashboard after an update
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/health")
@@ -326,6 +327,64 @@ def prediction_log(limit: int = 200):
     runs["notes"] = runs.notes.apply(lambda x: json.loads(x) if x else None)
     return dict(predictions=json.loads(log.to_json(orient="records")),
                 runs=json.loads(runs.to_json(orient="records")))
+
+
+@app.get("/api/record")
+def record():
+    """Our live record: the latest pick logged for each game before tip-off,
+    graded against the line that was posted when the pick was made."""
+    log = read_df(
+        "SELECT l.*, g.date, g.home_team, g.away_team, g.home_score, g.away_score "
+        "FROM prediction_log l JOIN games g USING(game_id) "
+        "WHERE l.predicted_at = (SELECT MAX(predicted_at) FROM prediction_log x WHERE x.game_id = l.game_id)")
+    win_pay = 100 / 110
+    tallies = {k: dict(w=0, l=0, p=0, units=0.0) for k in ("winner", "spread", "total")}
+    picks, pending = [], 0
+
+    def grade(kind, outcome):
+        t = tallies[kind]
+        if outcome is None:
+            return None
+        t[outcome] += 1
+        if kind != "winner":
+            t["units"] += win_pay if outcome == "w" else (-1.0 if outcome == "l" else 0.0)
+        return outcome
+
+    for r in log.sort_values(["date", "game_id"], ascending=False).itertuples():
+        home_side = r.home_win_prob >= 0.5
+        pick = dict(game_id=r.game_id, date=r.date, home=r.home_team, away=r.away_team,
+                    winner_pick=r.home_team if home_side else r.away_team,
+                    win_prob=round(max(r.home_win_prob, 1 - r.home_win_prob), 3))
+        if pd.notna(r.closing_home_spread):
+            cover_home = r.home_covers_prob >= 0.5
+            line = r.closing_home_spread if cover_home else -r.closing_home_spread
+            pick["spread_pick"] = f"{r.home_team if cover_home else r.away_team} {line:+g}"
+        if pd.notna(r.closing_total) and pd.notna(r.over_prob):
+            pick["total_pick"] = f"{'Over' if r.over_prob >= 0.5 else 'Under'} {r.closing_total:g}"
+        if pd.isna(r.home_score):
+            pending += 1
+            pick["status"] = "pending"
+            picks.append(pick)
+            continue
+        margin = r.home_score - r.away_score
+        pick["final"] = f"{r.away_team} {int(r.away_score)}, {r.home_team} {int(r.home_score)}"
+        pick["winner"] = grade("winner", "w" if (margin > 0) == home_side else "l")
+        if "spread_pick" in pick:
+            m = margin + r.closing_home_spread
+            pick["spread"] = grade("spread", "p" if m == 0 else ("w" if (m > 0) == cover_home else "l"))
+        if "total_pick" in pick:
+            tot = r.home_score + r.away_score
+            pick["total"] = grade("total", "p" if tot == r.closing_total else
+                                  ("w" if (tot > r.closing_total) == (r.over_prob >= 0.5) else "l"))
+        pick["status"] = "graded"
+        picks.append(pick)
+
+    for t in tallies.values():
+        n = t["w"] + t["l"]
+        t["pct"] = round(t["w"] / n, 3) if n else None
+        t["units"] = round(t["units"], 2)
+    return dict(record=tallies, pending=pending, graded=len(picks) - pending, picks=picks[:200],
+                break_even=0.524)
 
 
 _refresh_lock = threading.Lock()

@@ -348,15 +348,36 @@ async function loadModel() {
 }
 
 // ---------- history
+function recordHtml(rc) {
+  const R = rc.record;
+  const line = (label, r, money) => {
+    const n = r.w + r.l, rec = `${r.w}-${r.l}${r.p ? '-' + r.p : ''}`;
+    const pctTxt = n ? pct(r.pct) : '—';
+    const u = money && n ? `<span class="${r.units >= 0 ? 'pos' : 'neg'}">${sgn(r.units, 2)}u</span>` : '';
+    return `<div class="stat" style="min-width:150px">${label}<b>${rec}</b>${pctTxt}${u ? ' · ' + u : ''}</div>`;
+  };
+  const mark = o => o === 'w' ? '<span class="chip hit">✓</span>' : o === 'l' ? '<span class="chip miss">✗</span>' : o === 'p' ? '<span class="chip">push</span>' : '';
+  const rows = rc.picks.slice(0, 60).map(p => `<tr><td>${p.date}</td><td>${p.away} at ${p.home}</td>
+    <td>${p.winner_pick} ${mark(p.winner)}</td><td>${p.spread_pick || '—'} ${mark(p.spread)}</td>
+    <td>${p.total_pick || '—'} ${mark(p.total)}</td><td>${p.final || 'Pending'}</td></tr>`).join('');
+  const empty = rc.graded === 0 ? `<p class="note">${rc.pending ? rc.pending + ' pick' + (rc.pending > 1 ? 's' : '') + ' waiting on final scores. ' : ''}Picks are graded the next time the app updates after the games finish.</p>` : '';
+  return `<h3 style="font:600 22px var(--display);margin:24px 0 8px">Our record</h3>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;margin-bottom:8px">
+      ${line('Winners', R.winner, false)}${line('Against the spread', R.spread, true)}${line('Over/under', R.total, true)}
+    </div>
+    <p class="note">Every game counts, using the line posted when the pick was made. Units are 1-unit bets at −110, where 52.4% breaks even.${rc.pending ? ' ' + rc.pending + ' pending.' : ''}</p>
+    ${empty}
+    <table><tr><th>Date</th><th>Game</th><th>Winner</th><th>Spread</th><th>Total</th><th>Final</th></tr>${rows}</table>`;
+}
 async function loadHistory() {
-  const [bt, lg] = await Promise.all([api('/api/backtest'), api('/api/log')]);
+  const [bt, lg, rc] = await Promise.all([api('/api/backtest'), api('/api/log'), api('/api/record').catch(() => null)]);
   const runs = lg.runs.map(r => {
     const d = r.notes || {}, alerts = (d.psi_alert || []).length;
     return `<tr><td>${r.run_at.replace('T', ' ')}</td><td>${r.as_of}</td><td class="n">${r.ingested}</td><td class="n">${r.settled}</td><td class="n">${r.predicted}</td><td>${r.retrained ? 'yes' : '—'}</td><td>${r.model_version}</td><td class="${alerts ? 'neg' : ''}">${alerts ? alerts + ' drifting' : 'stable'}</td></tr>`;
   }).join('');
   const settled = lg.predictions.filter(p => p.settled_at);
   const live = settled.length ? `${settled.length} settled · winner accuracy ${pct(settled.filter(p => (p.home_win_prob >= .5) === (p.home_win === 1)).length / settled.length)}` : 'No settled predictions yet. They appear after the nightly job ingests final scores.';
-  $('#history').innerHTML = `
+  $('#history').innerHTML = (rc ? recordHtml(rc) : '') + `
     <h3 style="font:600 22px var(--display);margin:24px 0 4px">Live prediction log</h3><p class="note">${live}</p>
     <table><tr><th>Date</th><th>Game</th><th>Home win</th><th>Covers</th><th>Total</th><th>Line</th><th>Result</th></tr>
     ${lg.predictions.slice(0, 40).map(p => `<tr><td>${p.date}</td><td>${p.away_team} at ${p.home_team}</td><td class="n">${pct(p.home_win_prob)}</td><td class="n">${pct(p.home_covers_prob)}</td>
