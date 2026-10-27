@@ -79,6 +79,22 @@ CREATE TABLE IF NOT EXISTS prediction_log (
     PRIMARY KEY (game_id, model_version)
 );
 
+-- Injury-alert bookkeeping: when each absence was first seen, and the line then.
+CREATE TABLE IF NOT EXISTS game_scans (
+    game_id TEXT PRIMARY KEY, first_scan_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS injury_seen (
+    game_id TEXT NOT NULL, team TEXT NOT NULL, player TEXT NOT NULL, status TEXT NOT NULL,
+    impact REAL, first_seen_at TEXT NOT NULL, home_spread_then REAL,
+    PRIMARY KEY (game_id, team, player, status)
+);
+CREATE TABLE IF NOT EXISTS alerts (
+    game_id TEXT PRIMARY KEY, created_at TEXT NOT NULL, model_version TEXT,
+    side_team TEXT NOT NULL, side_is_home INTEGER NOT NULL, home_spread REAL NOT NULL,
+    edge_points REAL, unpriced_points REAL, players TEXT, reason TEXT,
+    result TEXT, closing_home_spread REAL, settled_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS pipeline_runs (
     run_at TEXT PRIMARY KEY, as_of TEXT, ingested INTEGER, settled INTEGER,
     predicted INTEGER, retrained INTEGER, model_version TEXT, notes TEXT

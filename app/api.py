@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .config import DB_PATH, MODEL_DIR, PREDICTION_LEAD_HOURS
+from .config import DATA_DIR, DB_PATH, MODEL_DIR, PREDICTION_LEAD_HOURS
 from .db import init_db, read_df
 from .features import game_features, load_raw, team_features
 from .models import ModelBundle
@@ -43,7 +43,7 @@ def state():
                 if r.minutes_share >= 0.04 or r.is_star:
                     out.setdefault((r.game_id, r.team), []).append(
                         dict(player=r.player, status=r.status, star=int(r.is_star)))
-            _cache.update(key=key, raw=(games, box, inj, teams), tf=tf, gf=game_features(games, tf),
+            _cache.update(key=key, raw=(games, box, inj, teams), tf=tf, gf=game_features(games, tf, inj),
                           bundle=ModelBundle(), out=out)
         return _cache
 
@@ -58,6 +58,16 @@ def _fair_ml(p):
     p = min(max(p, 0.01), 0.99)
     return int(round(-100 * p / (1 - p))) if p >= 0.5 else int(round(100 * (1 - p) / p))
 
+
+
+def _overrides() -> dict:
+    """Picks the user changed by hand (data/pick_overrides.json), e.g.
+    {"<game_id>": {"winner": "DET", "note": "..."}}. Shown as 'changed by you'."""
+    p = DATA_DIR / "pick_overrides.json"
+    try:
+        return json.loads(p.read_text()) if p.exists() else {}
+    except Exception:
+        return {}
 
 def _game_payload(row, pred, out_map=None) -> dict:
     out_map = out_map or {}
@@ -209,7 +219,54 @@ def games(date: str):
     if rows.empty:
         return dict(date=date, games=[])
     preds = s["bundle"].predict(rows)
-    return dict(date=date, games=[_game_payload(r, p, s["out"]) for r, p in zip(rows.itertuples(), preds)])
+    payloads = [_game_payload(r, p, s["out"]) for r, p in zip(rows.itertuples(), preds)]
+    _lock_started(payloads)
+    from .alerts import active
+    al = active([g["game_id"] for g in payloads])
+    for g in payloads:
+        if g["game_id"] in al:
+            g["alert"] = al[g["game_id"]]
+    ov = _overrides()
+    for g in payloads:
+        o = ov.get(g["game_id"])
+        if not o:
+            continue
+        if "home_win_prob" in o:
+            g["prediction"]["home_win_prob"] = float(o["home_win_prob"])
+        if o.get("winner"):
+            g["prediction"]["overrides"] = o
+    return dict(date=date, games=payloads)
+
+
+def _lock_started(payloads):
+    """Once a game tips off, show the pick we logged before tip-off (the one the
+    record grades), with the line it was made against, instead of recomputing."""
+    now = pd.Timestamp.now(tz="UTC")
+    started = [g for g in payloads
+               if pd.notna(pd.to_datetime(g["tip_time"], utc=True, errors="coerce"))
+               and pd.to_datetime(g["tip_time"], utc=True) <= now]
+    if not started:
+        return
+    ids = [g["game_id"] for g in started]
+    log = read_df(
+        "SELECT * FROM prediction_log l WHERE game_id IN (%s) AND predicted_at = "
+        "(SELECT MAX(predicted_at) FROM prediction_log x WHERE x.game_id = l.game_id)"
+        % ",".join("?" * len(ids)), tuple(ids)).set_index("game_id")
+    for g in started:
+        if g["game_id"] not in log.index:
+            continue
+        r = log.loc[g["game_id"]]
+        pr = g["prediction"]
+        pr.update(home_win_prob=round(float(r.home_win_prob), 4),
+                  home_covers_prob=round(float(r.home_covers_prob), 4),
+                  predicted_total_points=round(float(r.predicted_total_points), 1),
+                  locked=True, locked_at=r.predicted_at)
+        if pd.notna(r.over_prob):
+            pr.update(over_prob=round(float(r.over_prob), 4), under_prob=round(1 - float(r.over_prob), 4))
+        if pd.notna(r.closing_home_spread):
+            g["market"]["home_spread"] = float(r.closing_home_spread)
+        if pd.notna(r.closing_total):
+            g["market"]["total"] = float(r.closing_total)
 
 
 class InjuryIn(BaseModel):
@@ -268,7 +325,7 @@ def predict(body: PredictIn):
                                               is_star=int(i.is_star), minutes_share=i.minutes_share,
                                               status=i.status.upper(), reported_at=tip.isoformat())
                                          for i in body.injuries])], ignore_index=True) if body.injuries else inj
-    gf2 = game_features(g2, team_features(g2, box, inj2, teams))
+    gf2 = game_features(g2, team_features(g2, box, inj2, teams), inj2)
     row = gf2[gf2.game_id == gid].copy()
     # fill missing market inputs from internal estimates
     if pd.isna(row.closing_home_spread.iat[0]):
@@ -334,12 +391,23 @@ def record():
     """Our live record: the latest pick logged for each game before tip-off,
     graded against the line that was posted when the pick was made."""
     log = read_df(
-        "SELECT l.*, g.date, g.home_team, g.away_team, g.home_score, g.away_score "
+        "SELECT l.*, g.date, g.home_team, g.away_team, g.home_score, g.away_score, "
+        "g.closing_home_spread AS close_spread, g.closing_total AS close_total "
         "FROM prediction_log l JOIN games g USING(game_id) "
         "WHERE l.predicted_at = (SELECT MAX(predicted_at) FROM prediction_log x WHERE x.game_id = l.game_id)")
     win_pay = 100 / 110
+    OV = _overrides()
     tallies = {k: dict(w=0, l=0, p=0, units=0.0) for k in ("winner", "spread", "total")}
     picks, pending = [], 0
+    # closing line value: did the line move toward our pick after we made it?
+    clv = {k: dict(n=0, our_way=0, against=0, points=0.0) for k in ("spread", "total")}
+
+    def track(kind, pts):
+        c = clv[kind]
+        c["n"] += 1
+        c["points"] += pts
+        c["our_way" if pts > 0 else ("against" if pts < 0 else "n")] += 0 if pts == 0 else 1
+        return round(float(pts), 1)
 
     def grade(kind, outcome):
         t = tallies[kind]
@@ -351,10 +419,15 @@ def record():
         return outcome
 
     for r in log.sort_values(["date", "game_id"], ascending=False).itertuples():
-        home_side = r.home_win_prob >= 0.5
+        ov = OV.get(str(r.game_id), {})
+        if "home_win_prob" in ov:
+            r = r._replace(home_win_prob=float(ov["home_win_prob"]))
+        home_side = (ov["winner"] == r.home_team) if ov.get("winner") else r.home_win_prob >= 0.5
         pick = dict(game_id=r.game_id, date=r.date, home=r.home_team, away=r.away_team,
                     winner_pick=r.home_team if home_side else r.away_team,
-                    win_prob=round(max(r.home_win_prob, 1 - r.home_win_prob), 3))
+                    win_prob=round(r.home_win_prob if home_side else 1 - r.home_win_prob, 3))
+        if ov.get("winner"):
+            pick["changed"] = ov.get("note", "Changed by you")
         if pd.notna(r.closing_home_spread):
             cover_home = r.home_covers_prob >= 0.5
             line = r.closing_home_spread if cover_home else -r.closing_home_spread
@@ -369,6 +442,12 @@ def record():
         margin = r.home_score - r.away_score
         pick["final"] = f"{r.away_team} {int(r.away_score)}, {r.home_team} {int(r.home_score)}"
         pick["winner"] = grade("winner", "w" if (margin > 0) == home_side else "l")
+        if "spread_pick" in pick and pd.notna(r.close_spread):
+            pick["spread_clv"] = track("spread", (r.closing_home_spread - r.close_spread) if cover_home
+                                       else (r.close_spread - r.closing_home_spread))
+        if "total_pick" in pick and pd.notna(r.close_total):
+            pick["total_clv"] = track("total", (r.close_total - r.closing_total) if r.over_prob >= 0.5
+                                      else (r.closing_total - r.close_total))
         if "spread_pick" in pick:
             m = margin + r.closing_home_spread
             pick["spread"] = grade("spread", "p" if m == 0 else ("w" if (m > 0) == cover_home else "l"))
@@ -383,8 +462,14 @@ def record():
         n = t["w"] + t["l"]
         t["pct"] = round(t["w"] / n, 3) if n else None
         t["units"] = round(t["units"], 2)
-    return dict(record=tallies, pending=pending, graded=len(picks) - pending, picks=picks[:200],
-                break_even=0.524)
+    for c in clv.values():
+        moved = c["our_way"] + c["against"]
+        c["our_way_pct"] = round(c["our_way"] / moved, 3) if moved else None
+        c["avg_points"] = round(c["points"] / c["n"], 2) if c["n"] else None
+        c["points"] = round(c["points"], 1)
+    from .alerts import summary as alert_summary
+    return dict(record=tallies, clv=clv, pending=pending, graded=len(picks) - pending, picks=picks[:200],
+                break_even=0.524, alerts=alert_summary())
 
 
 _refresh_lock = threading.Lock()

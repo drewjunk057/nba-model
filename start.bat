@@ -43,7 +43,7 @@ echo Starting NBA Predictor at http://localhost:8000
 echo Keep this window open while you use the app. Close it to stop.
 echo.
 start "" cmd /c "timeout /t 6 >nul & start http://localhost:8000"
-%PY% -m uvicorn app.api:app --port 8000
+%PY% -m uvicorn app.api:app --port 8000 --reload --reload-dir app
 goto :eof
 
 :fail

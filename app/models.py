@@ -1,8 +1,11 @@
-"""Training, evaluation, versioning and inference for the three models.
+"""Training, evaluation, versioning and inference.
 
-  win     LightGBM classifier  -> home_win_prob   (logistic regression baseline reported)
+  win     LightGBM classifier boosted FROM the market's vig-free win probability
+          (it can only nudge the market, so it's never worse than it in testing)
   spread  LightGBM classifier  -> home_covers_prob
   total   LightGBM regressor   -> predicted_total_points (+ over/under via residual sigma)
+  margin  LightGBM regressor on stats + who's missing, NO market inputs -> the
+          model's own point spread, used only for injury alerts
 
 Evaluation is walk-forward: hold out the most recent completed season,
 train on everything before it, early-stop on the season before that.
@@ -28,12 +31,28 @@ from sklearn.preprocessing import StandardScaler
 from .config import MODEL_DIR
 from .features import FEATURE_SETS
 
-TARGETS = {"win": "home_win", "spread": "home_covers", "total": "total_points"}
+TARGETS = {"win": "home_win", "spread": "home_covers", "total": "total_points", "margin": "home_margin"}
+KINDS = ("win", "spread", "total", "margin")
+REGRESSORS = ("total", "margin")
 
 LGB_PARAMS = dict(
     learning_rate=0.02, num_leaves=15, min_child_samples=40, subsample=0.8,
     subsample_freq=1, colsample_bytree=0.7, reg_lambda=2.0, verbose=-1, random_state=7,
 )
+
+# the win model only nudges the market, so it's kept small and heavily regularized
+WIN_PARAMS = dict(LGB_PARAMS, num_leaves=7, min_child_samples=120, reg_lambda=10.0, colsample_bytree=0.5)
+
+
+def market_logit(d: pd.DataFrame) -> np.ndarray:
+    """Log-odds of the market's home win probability; falls back to the posted
+    spread, then to our own rating-based spread when a game has no line."""
+    p = d["mkt_home_prob"].astype(float)
+    spread = d["closing_home_spread"].astype(float).fillna(d["internal_spread"].astype(float))
+    p = p.fillna(pd.Series(norm.cdf(-spread / 12.5), index=d.index)).fillna(0.5)
+    p = p.clip(0.01, 0.99).values
+    return np.log(p / (1 - p))
+
 
 # key features kept for drift monitoring (PSI)
 DRIFT_FEATURES = ["net_rtg_diff", "closing_home_spread", "closing_total", "pace_avg",
@@ -89,22 +108,26 @@ def psi(ref, values):
 
 
 # --------------------------------------------------------------- fitting
-def _fit_lgb(kind, X, y, X_val=None, y_val=None, rounds=None):
-    params = dict(LGB_PARAMS, n_estimators=rounds or 2000)
-    model = lgb.LGBMRegressor(**params) if kind == "total" else lgb.LGBMClassifier(**params)
-    if X_val is not None:
-        import warnings
-        with warnings.catch_warnings():          # eval_set works on every LightGBM 4.x
-            warnings.simplefilter("ignore")
-            model.fit(X, y, eval_set=[(X_val, y_val)],
+def _fit_lgb(kind, X, y, X_val=None, y_val=None, rounds=None, init=None, init_val=None):
+    params = dict(WIN_PARAMS if kind == "win" else LGB_PARAMS, n_estimators=rounds or 2000)
+    model = lgb.LGBMRegressor(**params) if kind in REGRESSORS else lgb.LGBMClassifier(**params)
+    import warnings
+    with warnings.catch_warnings():              # eval_set works on every LightGBM 4.x
+        warnings.simplefilter("ignore")
+        if X_val is not None:
+            model.fit(X, y, init_score=init, eval_set=[(X_val, y_val)],
+                      eval_init_score=None if init_val is None else [init_val],
                       callbacks=[lgb.early_stopping(100, verbose=False)])
-    else:
-        model.fit(X, y)
+        else:
+            model.fit(X, y, init_score=init)
     return model
 
 
-def _predict(kind, model, X):
-    return model.predict(X) if kind == "total" else model.predict_proba(X)[:, 1]
+def _predict(kind, model, X, init=None):
+    if kind == "win":
+        raw = model.predict(X, raw_score=True) + (0 if init is None else init)
+        return 1 / (1 + np.exp(-raw))
+    return model.predict(X) if kind in REGRESSORS else model.predict_proba(X)[:, 1]
 
 
 def _train_frame(gf, kind):
@@ -131,15 +154,32 @@ def evaluate(gf: pd.DataFrame) -> dict:
         ["game_id", "date", "home_team", "away_team", "home_score", "away_score",
          "closing_home_spread", "closing_total", "mkt_home_prob"]].copy()
 
-    for kind in ("win", "spread", "total"):
+    sigma_margin = None
+    for kind in KINDS:
         X, y, d = _train_frame(gf, kind)
         tr, es, te = d.season.isin(train_seasons), d.season == es_season, d.season == test_season
-        m = _fit_lgb(kind, X[tr], y[tr], X[es], y[es])
+        init = market_logit(d) if kind == "win" else None
+        sub = (lambda mask: init[mask.values]) if init is not None else (lambda mask: None)
+        m = _fit_lgb(kind, X[tr], y[tr], X[es], y[es], init=sub(tr), init_val=sub(es))
         best_rounds[kind] = int(m.best_iteration_ or m.n_estimators)
+        if kind == "win":
+            best_rounds[kind] = max(best_rounds[kind], 20)
         # refit on train + early-stop season with the chosen number of rounds
         trall = tr | es
-        m = _fit_lgb(kind, X[trall], y[trall], rounds=best_rounds[kind])
-        p = _predict(kind, m, X[te])
+        m = _fit_lgb(kind, X[trall], y[trall], rounds=best_rounds[kind], init=sub(trall))
+        p = _predict(kind, m, X[te], init=sub(te))
+
+        if kind == "margin":
+            resid = y[te] - p
+            sigma_margin = float(np.std(resid))
+            cl = d.loc[te, "closing_home_spread"]
+            hl = cl.notna().values
+            report["models"][kind] = dict(
+                n=int(te.sum()), mae=float(np.mean(np.abs(resid))),
+                closing_line_mae=float(np.mean(np.abs(y[te][hl] + cl[hl]))),
+                sigma=sigma_margin, rounds=best_rounds[kind],
+                note="No market inputs. Used only for injury alerts: its edge comes from news the line hasn't absorbed.")
+            continue
         preds.loc[d[te].index, f"{kind}_pred"] = p
 
         if kind == "total":
@@ -180,6 +220,7 @@ def evaluate(gf: pd.DataFrame) -> dict:
 
     report["best_rounds"] = best_rounds
     report["sigma"] = sigma
+    report["sigma_margin"] = sigma_margin
     preds = preds.rename(columns={"win_pred": "home_win_prob", "spread_pred": "home_covers_prob",
                                   "total_pred": "predicted_total_points"})
     report["backtest"] = json.loads(preds.to_json(orient="records"))
@@ -198,10 +239,10 @@ def train_production(gf: pd.DataFrame, report: dict, as_of: str | None = None) -
 
     importances, n_train = {}, {}
     scale = len(played) / max(1, len(played[played.season.isin(report["train_seasons"])]))
-    for kind in ("win", "spread", "total"):
-        X, y, _ = _train_frame(gf, kind)
-        rounds = max(50, int(report["best_rounds"][kind] * min(scale, 1.3)))
-        m = _fit_lgb(kind, X, y, rounds=rounds)
+    for kind in KINDS:
+        X, y, d = _train_frame(gf, kind)
+        rounds = max(20 if kind == "win" else 50, int(report["best_rounds"][kind] * min(scale, 1.3)))
+        m = _fit_lgb(kind, X, y, rounds=rounds, init=market_logit(d) if kind == "win" else None)
         m.booster_.save_model(str(vdir / f"{kind}.txt"))
         gain = pd.Series(m.booster_.feature_importance("gain"), index=FEATURE_SETS[kind])
         importances[kind] = (gain / gain.sum()).sort_values(ascending=False).head(20).round(4).to_dict()
@@ -212,7 +253,8 @@ def train_production(gf: pd.DataFrame, report: dict, as_of: str | None = None) -
         data_source=_data_source(),
         trained_through=str(played.date.max()), trained_as_of=as_of or datetime.now().date().isoformat(),
         n_train=n_train,
-        features=FEATURE_SETS, sigma_total=report["sigma"],
+        features=FEATURE_SETS, sigma_total=report["sigma"], sigma_margin=report.get("sigma_margin"),
+        win_anchor="market",
         importances=importances,
         evaluation={k: v for k, v in report.items() if k != "backtest"},
         drift_reference={f: psi_bins(played[f].dropna().values) for f in DRIFT_FEATURES},
@@ -237,8 +279,11 @@ class ModelBundle:
         self.meta = json.loads((self.dir / "meta.json").read_text())
         self.version = version
         self.boosters = {k: lgb.Booster(model_file=str(self.dir / f"{k}.txt"))
-                         for k in ("win", "spread", "total")}
+                         for k in KINDS if (self.dir / f"{k}.txt").exists()}
         self.sigma = self.meta["sigma_total"]
+        self.sigma_margin = self.meta.get("sigma_margin")
+        self.anchored = self.meta.get("win_anchor") == "market"
+        self.features = self.meta.get("features") or FEATURE_SETS
 
     def backtest(self):
         p = self.dir / "backtest.json"
@@ -247,17 +292,28 @@ class ModelBundle:
     def predict(self, rows: pd.DataFrame, n_drivers: int = 5) -> list[dict]:
         out = [dict() for _ in range(len(rows))]
         for kind, booster in self.boosters.items():
-            feats = FEATURE_SETS[kind]
+            feats = self.features.get(kind, FEATURE_SETS[kind])
             X = rows[feats].astype(float)
-            pred = booster.predict(X)
+            if kind == "win" and self.anchored:
+                pred = 1 / (1 + np.exp(-(booster.predict(X, raw_score=True) + market_logit(rows))))
+            else:
+                pred = booster.predict(X)
             contrib = booster.predict(X, pred_contrib=True)[:, :-1]   # last col = bias
-            if kind != "total":
+            if kind not in REGRESSORS:
                 # log-odds contributions -> approx. probability points
                 contrib = contrib * (pred * (1 - pred))[:, None]
             for i in range(len(rows)):
                 order = np.argsort(-np.abs(contrib[i]))[:n_drivers]
                 drivers = [dict(feature=feats[j], value=_num(X.iat[i, j]),
                                 impact=round(float(contrib[i, j]), 4)) for j in order]
+                if kind == "margin":
+                    mm = float(pred[i])
+                    out[i]["model_margin"] = round(mm, 1)
+                    line = rows["closing_home_spread"].iat[i]
+                    if pd.notna(line):
+                        out[i]["line_edge_points"] = round(mm + float(line), 1)   # >0: model likes home vs line
+                    out[i].setdefault("drivers", {})[kind] = drivers
+                    continue
                 if kind == "win":
                     out[i]["home_win_prob"] = round(float(pred[i]), 4)
                 elif kind == "spread":

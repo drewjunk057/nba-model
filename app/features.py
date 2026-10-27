@@ -248,14 +248,20 @@ TOTAL_EXTRA = ["home_exp_ortg", "away_exp_ortg", "off_def_interaction",
                "pace_interaction", "expected_possessions", "internal_total",
                "total_gap", "fatigue_scoring"]
 
+# market inputs: excluded from the injury-alert margin model, which must form
+# its own view of the game to compare against the line
+MARKET_COLS = {"closing_home_spread", "closing_total", "mkt_home_prob", "spread_gap", "fav_rating_gap", "total_gap"}
+IMPACT_COLS = ["home_missing_impact", "away_missing_impact", "impact_diff"]
+
 FEATURE_SETS = {
     "win": SHARED,
     "spread": SHARED + SPREAD_EXTRA,
     "total": SHARED + TOTAL_EXTRA,
+    "margin": [f for f in SHARED + SPREAD_EXTRA if f not in MARKET_COLS] + IMPACT_COLS,
 }
 
 
-def game_features(games: pd.DataFrame, tf: pd.DataFrame) -> pd.DataFrame:
+def game_features(games: pd.DataFrame, tf: pd.DataFrame, inj: pd.DataFrame | None = None) -> pd.DataFrame:
     tfi = tf.drop(columns="is_home")
     home = tfi.add_prefix("home_").rename(columns={"home_game_id": "game_id", "home_team": "home_team"})
     away = tfi.add_prefix("away_").rename(columns={"away_game_id": "game_id", "away_team": "away_team"})
@@ -314,6 +320,14 @@ def game_features(games: pd.DataFrame, tf: pd.DataFrame) -> pd.DataFrame:
     df["home_covers"] = np.where(played & has_spread & (df.home_margin_vs_spread != 0),
                                  (df.home_margin_vs_spread > 0).astype(float), np.nan)  # pushes excluded
     df["total_points"] = df.home_score + df.away_score
+    df["home_margin"] = np.where(played, margin, np.nan)
+
+    # player impact of who's missing (points of team strength), for the alert model
+    from .player_value import impact_frame
+    if inj is None:
+        inj = read_df("SELECT * FROM injuries")
+    df = df.merge(impact_frame(inj, df), on="game_id", how="left")
+    df[IMPACT_COLS] = df[IMPACT_COLS].fillna(0.0)
     df["over"] = np.where(played & has_total & (df.total_points != df.closing_total),
                           (df.total_points > df.closing_total).astype(float), np.nan)
     return df.sort_values(["date", "tip_time", "game_id"]).reset_index(drop=True)
@@ -322,7 +336,7 @@ def game_features(games: pd.DataFrame, tf: pd.DataFrame) -> pd.DataFrame:
 def build_all(persist: bool = True):
     games, box, inj, teams = load_raw()
     tf = team_features(games, box, inj, teams)
-    gf = game_features(games, tf)
+    gf = game_features(games, tf, inj)
     if persist:
         with session() as con:
             con.execute("DELETE FROM team_game_features")

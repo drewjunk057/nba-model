@@ -112,6 +112,20 @@ pre { background: var(--panel); border: 1px solid var(--line); border-radius: 8p
   .legend { margin-left: 0; }
 }
 @media (prefers-reduced-motion: no-preference) { .bar .fill { transition: width .4s ease-out; } }
+.picks { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+.picks .lbl { font: 600 13px var(--body); color: var(--muted); align-self: center; margin-right: 2px; }
+.pick { border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 13px; color: var(--muted); line-height: 1.35; min-width: 170px; }
+.pick .call { display: block; font: 600 19px/1.1 var(--display); color: var(--chalk); }
+.pick .why { display: block; font-size: 12px; }
+.pick .tier { font-weight: 600; }
+.pick.strong { border-color: var(--model); background: color-mix(in srgb, var(--model) 14%, transparent); }
+.pick.strong .tier { color: var(--model); }
+.pick.lean { border-color: color-mix(in srgb, var(--model) 45%, var(--line)); }
+.pick.toss { opacity: .75; }
+.alertbar { grid-column: 1 / -1; border: 1px solid var(--model); background: color-mix(in srgb, var(--model) 16%, transparent);
+  border-radius: 8px; padding: 8px 12px; font-size: 14px; }
+.pick .res { margin-left: 6px; font-weight: 700; }
+.pick .res.hit { color: var(--hit); } .pick .res.miss { color: var(--miss); }
 </style>
 </head>
 <body>
@@ -217,8 +231,17 @@ async function loadGames(d) {
   const box = $('#games');
   box.innerHTML = '<p class="empty">Loading games…</p>';
   try {
-    const { games } = await api('/api/games?date=' + d);
+    const [{ games }, rc] = await Promise.all([api('/api/games?date=' + d), api('/api/record').catch(() => null)]);
     if (!games.length) { box.innerHTML = '<p class="empty">No games on this date. Use the arrows or pick another date.</p>'; return; }
+    // once a game has started, show the pick the record holds for it
+    const logged = rc ? Object.fromEntries(rc.picks.map(x => [String(x.game_id), x])) : {};
+    games.forEach(g => {
+      const lp = logged[String(g.game_id)];
+      if (!lp || new Date(g.tip_time) > new Date()) return;
+      const homePick = lp.winner_pick === g.home_team;
+      g.prediction.home_win_prob = homePick ? lp.win_prob : 1 - lp.win_prob;
+      g.prediction.locked = true;
+    });
     box.innerHTML = games.map(gameRow).join('');
     box.querySelectorAll('.game > button').forEach(b => b.onclick = () => {
       const g = b.parentElement; g.classList.toggle('open'); b.setAttribute('aria-expanded', g.classList.contains('open'));
@@ -254,12 +277,61 @@ function gameRow(g) {
     </div>
     <div class="stat">Spread<b>${coverSide}</b>${pct(Math.max(p.home_covers_prob, 1 - p.home_covers_prob))} to cover</div>
     <div class="stat">Total<b>${p.predicted_total_points} <span style="color:var(--market);font-size:15px">vs ${m.total ?? '—'}</span></b>${p.over_prob != null ? `${ouSide} ${pct(Math.max(p.over_prob, p.under_prob))}` : ''}</div>
+    ${picksStrip(g)}
   </button>
   <div class="detail">
     ${drivers('Why this win probability', p, g.drivers.win, true)}
     ${drivers('Why this spread lean', p, g.drivers.spread, true)}
     ${drivers('Why this total', p, g.drivers.total, false)}
   </div></div>`;
+}
+
+function picksStrip(g) {
+  const p = g.prediction, m = g.market, r = g.result, D = g.drivers || {};
+  const tier = (prob, strong, lean) => prob >= strong ? ['strong', 'Strong'] : prob >= lean ? ['lean', 'Lean'] : ['toss', 'Toss-up'];
+  // biggest data factor pushing toward the side we picked
+  // skip the betting line itself; show what in the data moves us off it
+  const MARKET = new Set(['mkt_home_prob', 'closing_home_spread', 'closing_total']);
+  const why = (list, towardPositive) => {
+    const d = (list || []).find(x => !MARKET.has(x.feature) && (towardPositive ? x.impact > 0 : x.impact < 0));
+    return d ? `Biggest factor: ${label(d.feature)}` : '';
+  };
+  const mark = ok => ok == null ? '' : `<span class="res ${ok ? 'hit' : 'miss'}">${ok ? '✓' : '✗'}</span>`;
+  const card = (kind, call, prob, t, reason, ok, title) =>
+    `<div class="pick ${t[0]}" title="${title}"><span>${kind}</span>${mark(ok)}<span class="call">${call}</span>
+      <span><span class="tier">${t[1]}</span>${prob != null ? ' · ' + pct(prob) : ''}</span>${reason ? `<span class="why">${reason}</span>` : ''}</div>`;
+
+  const out = [];
+  const ovW = p.overrides && p.overrides.winner;
+  const homeWin = ovW ? ovW === g.home_team : p.home_win_prob >= .5;
+  const wp = homeWin ? p.home_win_prob : 1 - p.home_win_prob;
+  out.push(card('Winner', homeWin ? g.home_team : g.away_team, wp,
+    ovW ? ['lean', 'Changed by you'] : tier(wp, .65, .57),
+    ovW ? (p.overrides.note || '') : why(D.win, homeWin), r ? (r.home_win === 1) === homeWin : null,
+    'Model win probability. Strong = 65%+, Lean = 57-65%, Toss-up = under 57%.'));
+  const NO_EDGE = 'Testing on two full seasons found no model beats the closing spread or total (49-52%, 52.4% breaks even). Treat this as a lean, not a bet. Injury edges are the exception.';
+  if (g.alert) {
+    const a = g.alert, aLine = a.side_is_home ? a.home_spread : -a.home_spread;
+    const aOk = r && r.home_covered != null ? (r.home_covered === 1) === !!a.side_is_home : null;
+    out.push(card('Spread', `${a.side_team} ${fmtSpread(aLine)}`, null, ['strong', 'Injury edge'],
+      `${a.edge_points} pts of value · flagged ${new Date(a.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`, aOk,
+      'News the line has not absorbed yet. This is the one situation where testing found an edge (54-56% vs early lines).'));
+  } else if (m.home_spread != null && p.home_covers_prob != null) {
+    const homeCov = p.home_covers_prob >= .5, cp = Math.max(p.home_covers_prob, 1 - p.home_covers_prob);
+    const call = homeCov ? `${g.home_team} ${fmtSpread(m.home_spread)}` : `${g.away_team} ${fmtSpread(-m.home_spread)}`;
+    out.push(card('Spread', call, cp, ['toss', 'No edge'], 'Lean only. The line already prices this in.',
+      r && r.home_covered != null ? (r.home_covered === 1) === homeCov : null, NO_EDGE));
+  }
+  if (m.total != null && p.over_prob != null) {
+    const over = p.over_prob >= .5, op = Math.max(p.over_prob, 1 - p.over_prob);
+    out.push(card('Total', `${over ? 'Over' : 'Under'} ${m.total}`, op, ['toss', 'No edge'],
+      `Model total ${p.predicted_total_points}` + (why(D.total, over) ? ' · ' + why(D.total, over).replace('Biggest factor: ', 'driven by ') : ''),
+      r && r.went_over != null ? (r.went_over === 1) === over : null,
+      NO_EDGE));
+  }
+  const lock = p.locked ? `<br><span style="font-weight:400;font-size:12px" title="Logged ${p.locked_at || ''} before tip-off. This is the pick the record grades.">locked at tip-off</span>` : '';
+  const banner = g.alert ? `<div class="alertbar">⚡ <b>Injury edge.</b> ${g.alert.reason}</div>` : '';
+  return `${banner}<div class="picks"><span class="lbl">Our picks${lock}</span>${out.join('')}</div>`;
 }
 
 function outLine(team, list) {
@@ -348,6 +420,28 @@ async function loadModel() {
 }
 
 // ---------- history
+function clvHtml(clv) {
+  if (!clv) return '';
+  const one = (label, c) => c.n ? `<div class="stat" style="min-width:200px">${label}<b>${c.our_way_pct != null ? pct(c.our_way_pct) : '—'}</b>moved our way · avg ${sgn(c.avg_points || 0, 2)} pts · ${c.n} picks</div>` : '';
+  const body = one('Spread line movement', clv.spread) + one('Total line movement', clv.total);
+  return body ? `<h4 style="font:600 17px var(--display);margin:16px 0 6px">Did the line move toward our picks?</h4>
+    <div style="display:flex;gap:32px;flex-wrap:wrap">${body}</div>
+    <p class="note">The quickest test of a real edge: if the line keeps moving our way after we pick (well over 50%), the picks are ahead of the market. Judge it after 200+ picks.</p>` : '';
+}
+function alertsHtml(a) {
+  if (!a) return '';
+  const R = a.record, n = R.w + R.l;
+  const mark = o => o === 'w' ? '<span class="chip hit">✓</span>' : o === 'l' ? '<span class="chip miss">✗</span>' : o === 'p' ? '<span class="chip">push</span>' : '';
+  const rows = a.alerts.slice(0, 30).map(x => `<tr><td>${x.date}</td><td>${x.away} at ${x.home}</td><td>${x.pick} ${mark(x.result)}</td>
+    <td class="n">${x.edge_points}</td><td class="n">${x.clv_points != null ? sgn(x.clv_points, 1) : '—'}</td><td>${x.final || 'Pending'}</td></tr>`).join('');
+  return `<h3 style="font:600 22px var(--display);margin:24px 0 8px">Injury alerts</h3>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;margin-bottom:8px">
+      <div class="stat" style="min-width:150px">Record<b>${R.w}-${R.l}${R.p ? '-' + R.p : ''}</b>${n ? pct(R.pct) + ' · <span class="' + (R.units >= 0 ? 'pos' : 'neg') + '">' + sgn(R.units, 2) + 'u</span>' : 'No graded alerts yet'}</div>
+      <div class="stat" style="min-width:150px">Line moved our way<b>${R.moved_our_way_pct != null ? pct(R.moved_our_way_pct) : '—'}</b>${R.avg_clv_points != null ? 'avg ' + sgn(R.avg_clv_points, 2) + ' pts' : ''}</div>
+    </div>
+    <p class="note">Alerts fire when a player is newly ruled out, the line hasn't caught up, and the model disagrees with the line by 2+ points. Checked every 30 minutes on game days. You'll also get a Windows notification.</p>
+    ${rows ? `<table><tr><th>Date</th><th>Game</th><th>Alert pick</th><th>Edge</th><th>Line move</th><th>Final</th></tr>${rows}</table>` : '<p class="note">No alerts yet.</p>'}`;
+}
 function recordHtml(rc) {
   const R = rc.record;
   const line = (label, r, money) => {
@@ -358,7 +452,7 @@ function recordHtml(rc) {
   };
   const mark = o => o === 'w' ? '<span class="chip hit">✓</span>' : o === 'l' ? '<span class="chip miss">✗</span>' : o === 'p' ? '<span class="chip">push</span>' : '';
   const rows = rc.picks.slice(0, 60).map(p => `<tr><td>${p.date}</td><td>${p.away} at ${p.home}</td>
-    <td>${p.winner_pick} ${mark(p.winner)}</td><td>${p.spread_pick || '—'} ${mark(p.spread)}</td>
+    <td>${p.winner_pick}${p.changed ? ' <span class="chip" title="' + p.changed + '">changed by you</span>' : ''} ${mark(p.winner)}</td><td>${p.spread_pick || '—'} ${mark(p.spread)}</td>
     <td>${p.total_pick || '—'} ${mark(p.total)}</td><td>${p.final || 'Pending'}</td></tr>`).join('');
   const empty = rc.graded === 0 ? `<p class="note">${rc.pending ? rc.pending + ' pick' + (rc.pending > 1 ? 's' : '') + ' waiting on final scores. ' : ''}Picks are graded the next time the app updates after the games finish.</p>` : '';
   return `<h3 style="font:600 22px var(--display);margin:24px 0 8px">Our record</h3>
@@ -366,6 +460,8 @@ function recordHtml(rc) {
       ${line('Winners', R.winner, false)}${line('Against the spread', R.spread, true)}${line('Over/under', R.total, true)}
     </div>
     <p class="note">Every game counts, using the line posted when the pick was made. Units are 1-unit bets at −110, where 52.4% breaks even.${rc.pending ? ' ' + rc.pending + ' pending.' : ''}</p>
+    ${clvHtml(rc.clv)}
+    ${alertsHtml(rc.alerts)}
     ${empty}
     <table><tr><th>Date</th><th>Game</th><th>Winner</th><th>Spread</th><th>Total</th><th>Final</th></tr>${rows}</table>`;
 }

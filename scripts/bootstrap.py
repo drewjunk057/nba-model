@@ -43,11 +43,24 @@ def copy_seed():
 
 
 TASK_NAME = "NBA Predictor update"
+SCHEDULE_VERSION = "schedule-v2"      # bump when the triggers change
+
+
+def ensure_schedule():
+    """Register the task if it's missing or older than SCHEDULE_VERSION."""
+    status = DATA_DIR / "schedule_status.txt"
+    try:
+        current = status.read_text(encoding="utf-8")
+    except OSError:
+        current = ""
+    if SCHEDULE_VERSION not in current or "registered" not in current:
+        schedule_updates()
 
 
 def schedule_updates():
     """Register (or refresh) a Windows scheduled task that updates the data at
-    4:00 AM and 2:30 PM every day, hidden, catching up after sleep."""
+    4:00 AM and every 30 minutes from 8 AM to 8 PM (injury alerts), hidden,
+    catching up after sleep."""
     import os
     import subprocess as sp
     from datetime import datetime
@@ -61,9 +74,12 @@ def schedule_updates():
     ps = "; ".join([
         f"$a = New-ScheduledTaskAction -Execute {q(exe)} -Argument '-m scripts.scheduled_update' -WorkingDirectory {q(ROOT)}",
         "$t1 = New-ScheduledTaskTrigger -Daily -At 4:00AM",
-        "$t2 = New-ScheduledTaskTrigger -Daily -At 2:30PM",
+        "$t2 = New-ScheduledTaskTrigger -Daily -At 8:00AM",
+        # every 30 minutes from 8 AM to 8 PM: catches injury news before tip-off
+        "$t2.Repetition = (New-ScheduledTaskTrigger -Once -At 8:00AM -RepetitionInterval "
+        "(New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Hours 12)).Repetition",
         "$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries "
-        "-DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1)",
+        "-DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 50) -MultipleInstances IgnoreNew",
         f"Register-ScheduledTask -TaskName {q(TASK_NAME)} -Action $a -Trigger $t1,$t2 -Settings $s "
         "-Description 'Updates NBA Predictor games, lines and injuries, grades picks and logs new ones.' "
         "-Force | Out-Null",
@@ -73,10 +89,10 @@ def schedule_updates():
         r = sp.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
                    capture_output=True, text=True, timeout=60)
         ok = r.returncode == 0
-        status.write_text(f"{datetime.now():%Y-%m-%d %H:%M}  {'registered' if ok else 'FAILED'}  "
+        status.write_text(f"{datetime.now():%Y-%m-%d %H:%M}  {'registered' if ok else 'FAILED'}  {SCHEDULE_VERSION}  "
                           f"exe={exe}\n{r.stdout}{r.stderr}", encoding="utf-8")
         if ok:
-            print("Automatic updates are on: 4:00 AM and 2:30 PM daily.")
+            print("Automatic updates are on: 4:00 AM, then every 30 minutes from 8 AM to 8 PM.")
         else:
             print("Couldn't set up automatic updates (details in data\\schedule_status.txt).")
     except Exception as e:  # never block the app over this
@@ -89,7 +105,7 @@ def run_update(args):
 
 def main():
     copy_seed()
-    schedule_updates()
+    schedule_updates()                 # always refresh on app start (folder may have moved)
     have_models = (MODEL_DIR / "current.json").exists()
     have_db = DB_PATH.exists() and SUMMARY.exists()
 

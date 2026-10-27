@@ -18,13 +18,22 @@ FastAPI serves the predictions and a dashboard; a nightly job ingests results, s
 
 The first run installs the packages (a few minutes), sets up the saved models and five seasons of games from `seed/`, downloads today's lines, injuries and rosters, and opens the dashboard at http://localhost:8000. After that, `start.bat` opens in seconds and refreshes the data whenever it's more than 3 hours old. Keep the black window open while you use the app.
 
-**Automatic updates.** The first time `start.bat` runs, it sets up a Windows scheduled task ("NBA Predictor update") that runs hidden at 4:00 AM and 2:30 PM every day, and catches up if the PC was asleep. It grades finished picks, logs picks for the day's games with the latest lines and injuries, and retrains weekly. The app doesn't need to be open. To turn it off, delete the task in Task Scheduler.
+**Automatic updates.** The first time `start.bat` runs, it sets up a Windows scheduled task ("NBA Predictor update") that runs hidden at 4:00 AM and every 30 minutes from 8 AM to 8 PM, and catches up if the PC was asleep. It grades finished picks, logs picks for the day's games with the latest lines and injuries, and retrains weekly. The app doesn't need to be open. To turn it off, delete the task in Task Scheduler.
 
 **Our record.** The History tab keeps a running record of every pick: winners, against the spread and over/under, graded against the line posted when the pick was made, with units at −110.
 
 To get model updates later, download the repo again (or `git pull`). Your local data in `data/` and `models/` isn't touched.
 
 **For the owner:** `Publish to GitHub.bat` packs the current models and game history into `seed/` and pushes everything to `github.com/drewjunk057/nba-model`.
+
+## What the model can and can't do (tested on 2024-25 and 2025-26)
+
+- **Win probability** starts from the betting market's own probability and lets the model nudge it. That matches the market (Brier 0.194) instead of trailing it; the old standalone model was slightly worse. Winner picks will usually be the favorite.
+- **Spread and total picks are labeled "No edge".** Six different approaches all landed at 49-52% against closing lines (52.4% breaks even). They're shown as leans only.
+- **Injury alerts are the one supported edge.** A stats model that knows who's missing beat early lines 54-56% in both seasons, with the line then moving its way 61-69% of the time; without injury information that edge disappeared. So the app checks injury reports every 30 minutes from 8 AM to 8 PM and flags a game (on the card, in the History tab, and with a Windows notification) when a player worth 1+ point is newly ruled out, the line hasn't caught up, and the model disagrees with the line by 2+ points. Player worth comes from a minutes-weighted adjusted plus-minus (`app/player_value.py`), refit monthly on past games only.
+- **Line movement tracking.** The History tab shows how often the line moved toward each pick after it was made. Over 200+ picks, well above 50% means a real edge; around 50% means none.
+
+These alert rules are a reasonable starting point, not a proven system: the backtest knew exactly who sat out, while live alerts depend on how fast the news arrives. Judge them by their own record and line movement over a few hundred alerts.
 
 ## Quick start
 

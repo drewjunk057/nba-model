@@ -131,10 +131,18 @@ def run_nightly(as_of: date | None = None, force_retrain: bool = False,
         train_production(gf, report, as_of.isoformat())
     bundle = ModelBundle()
     predicted = log_predictions(gf, bundle, as_of)
+    from . import alerts
+    settled += alerts.settle()
+    try:
+        new_alerts = alerts.scan(gf, bundle)
+    except Exception as e:                      # alerts must never break the update
+        import logging
+        logging.getLogger("alerts").warning("alert scan failed: %r", e)
+        new_alerts = []
     drift = drift_report(gf, bundle)
 
     summary = dict(as_of=as_of.isoformat(), ingested=ing["new_results"], upcoming=ing["upcoming"],
-                   settled=settled, predicted=predicted, retrained=bool(retrained),
+                   settled=settled, predicted=predicted, retrained=bool(retrained), alerts=len(new_alerts),
                    model_version=bundle.version, drift=drift)
     with session() as con:
         con.execute("INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?,?,?,?,?)",

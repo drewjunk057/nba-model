@@ -27,6 +27,7 @@ from ..db import init_db, session
 GAME_COLS = ["game_id", "date", "season", "tip_time", "prediction_timestamp",
              "home_team", "away_team", "home_score", "away_score",
              "closing_home_spread", "closing_total", "home_moneyline", "away_moneyline"]
+LINE_COLS = ["closing_home_spread", "closing_total", "home_moneyline", "away_moneyline"]
 BOX_COLS = ["game_id", "team", "opp", "is_home", "pts", "poss", "fga", "fgm",
             "fg3m", "fta", "ftm", "tov", "orb", "drb", "opp_drb"]
 INJ_COLS = ["game_id", "team", "player", "is_star", "minutes_share", "status", "reported_at"]
@@ -75,6 +76,17 @@ def ingest_feed(feed_dir: Path, as_of: date, lookahead_days: int = 7) -> dict:
     upcoming = games[(games["date"] >= as_of_s) & (games["date"] <= horizon)].copy()
     upcoming[["home_score", "away_score"]] = None
 
+    now = pd.Timestamp.now(tz="UTC")
+    if as_of == date.today():
+        # tonight's finished games count as played, so picks are graded the same night
+        tips = pd.to_datetime(games["tip_time"], utc=True, errors="coerce")
+        final_today = (games["date"] == as_of_s) & games["home_score"].notna() & (tips < now)
+        if final_today.any():
+            played = pd.concat([played, games[final_today]])
+            upcoming = upcoming[~upcoming["game_id"].isin(games.loc[final_today, "game_id"])]
+    up_tips = pd.to_datetime(upcoming["tip_time"], utc=True, errors="coerce")
+    started_ids = list(upcoming.loc[up_tips <= now, "game_id"])
+
     played_ids = set(played["game_id"])
     visible_ids = played_ids | set(upcoming["game_id"])
     box = box[box["game_id"].isin(played_ids)]
@@ -88,6 +100,18 @@ def ingest_feed(feed_dir: Path, as_of: date, lookahead_days: int = 7) -> dict:
     with session() as con:
         before = con.execute("SELECT COUNT(*) FROM games WHERE home_score IS NOT NULL").fetchone()[0]
         _upsert(con, "teams", teams[["team", "name", "lat", "lon"]])
+        if started_ids:
+            # a game in progress: keep the pregame line we already have, so live
+            # in-game odds never replace it
+            qs = ",".join("?" * len(started_ids))
+            prior = pd.read_sql_query(
+                f"SELECT game_id, {', '.join(LINE_COLS)} FROM games WHERE game_id IN ({qs})",
+                con, params=started_ids).set_index("game_id")
+            upcoming = upcoming.set_index("game_id")
+            for c in LINE_COLS:
+                keep = prior[c].dropna()
+                upcoming.loc[upcoming.index.intersection(keep.index), c] = keep
+            upcoming = upcoming.reset_index()
         _upsert(con, "games", pd.concat([played, upcoming])[GAME_COLS])
         _upsert(con, "team_box", box[BOX_COLS])
         _upsert(con, "injuries", inj[INJ_COLS])
