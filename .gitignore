@@ -11,3 +11,6 @@ _to_delete/
 probe.bat
 scripts/probe.py
 .claude/
+
+# marks a development copy (never self-updates)
+.dev

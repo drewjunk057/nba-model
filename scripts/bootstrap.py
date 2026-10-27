@@ -127,8 +127,22 @@ def run_update(args):
 
 
 def main():
+    dev = (ROOT / ".dev").exists()
+    if dev:
+        print("Development copy: no automatic updates or background schedule on this PC.")
+    else:
+        try:                           # production: get the newest published version first
+            import os
+            os.environ["NBA_IN_START_BAT"] = "1"
+            from scripts.self_update import run as self_update
+            r = self_update()
+            if r == "updated":
+                print("Updated to the newest published version.")
+        except Exception as e:
+            print("Update check failed:", e)
     copy_seed()
-    schedule_updates()                 # always refresh on app start (folder may have moved)
+    if not dev:
+        schedule_updates()             # always refresh on app start (folder may have moved)
     have_models = (MODEL_DIR / "current.json").exists()
     have_db = DB_PATH.exists() and SUMMARY.exists()
 
