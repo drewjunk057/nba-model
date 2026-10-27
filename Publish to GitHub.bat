@@ -13,7 +13,7 @@ if errorlevel 1 (
 
 rem --- Refresh the starter data your friend's first run uses ---
 echo Packing the current models and game data into seed\ ...
-python -c "import json,shutil,pathlib as P; s=P.Path('seed'); shutil.rmtree(s,ignore_errors=True); (s/'raw').mkdir(parents=True); [shutil.copy2(f,s/'raw'/f.name) for f in P.Path('data/raw').glob('*.json.gz')]; v=json.loads(P.Path('models/current.json').read_text())['model_version']; shutil.copytree(P.Path('models')/v, s/'models'/v); shutil.copy2('models/current.json', s/'models'/'current.json'); print('  model', v)"
+python -c "import json,shutil,pathlib as P; s=P.Path('seed'); [shutil.rmtree(s/d,ignore_errors=True) for d in ('raw','models')]; (s/'raw').mkdir(parents=True); [shutil.copy2(f,s/'raw'/f.name) for f in P.Path('data/raw').glob('*.json.gz')]; v=json.loads(P.Path('models/current.json').read_text())['model_version']; shutil.copytree(P.Path('models')/v, s/'models'/v); shutil.copy2('models/current.json', s/'models'/'current.json'); print('  model', v)"
 if errorlevel 1 goto :fail
 
 if not exist ".git" (

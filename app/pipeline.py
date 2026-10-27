@@ -121,6 +121,15 @@ def run_nightly(as_of: date | None = None, force_retrain: bool = False,
     as_of = as_of or date.today()
     feed_dir = feed_dir or default_feed()
     init_db()
+    try:                                       # a published pick record from another copy
+        from .record_transfer import import_record
+        n = import_record()
+        if n:
+            import logging
+            logging.getLogger("record").warning("imported %d picks from seed/record.json", n)
+    except Exception as e:
+        import logging
+        logging.getLogger("record").warning("record import failed: %r", e)
     ing = ingest_feed(feed_dir, as_of)
     gf = build_all(persist=True)
     settled = settle()
