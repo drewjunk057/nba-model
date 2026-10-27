@@ -22,8 +22,31 @@ SUMMARY = DATA_DIR / "real" / "fetch_summary.json"
 FRESH_HOURS = 3
 
 
+def _trained(version_dir: Path) -> str:
+    import json
+    try:
+        m = json.loads((version_dir / "meta.json").read_text())
+        return m.get("trained_as_of") or m.get("trained_through") or ""
+    except Exception:
+        return ""
+
+
+def _seed_is_newer() -> bool:
+    """True when the published model was trained after the one in use here."""
+    import json
+    try:
+        seed_v = json.loads((SEED / "models" / "current.json").read_text())["model_version"]
+        cur_v = json.loads((MODEL_DIR / "current.json").read_text())["model_version"]
+    except Exception:
+        return False
+    return seed_v != cur_v and _trained(SEED / "models" / seed_v) > _trained(MODEL_DIR / cur_v)
+
+
 def copy_seed():
-    if not (MODEL_DIR / "current.json").exists() and (SEED / "models" / "current.json").exists():
+    newer = (MODEL_DIR / "current.json").exists() and _seed_is_newer()
+    if newer:
+        print("Installing the newer published model.")
+    if (newer or not (MODEL_DIR / "current.json").exists()) and (SEED / "models" / "current.json").exists():
         for p in (SEED / "models").iterdir():
             dest = MODEL_DIR / p.name
             if p.is_dir():
