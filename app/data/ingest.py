@@ -56,6 +56,16 @@ def _upsert(con, table: str, df: pd.DataFrame):
     return len(rows)
 
 
+def _injury_report_ok(feed_dir: Path) -> bool:
+    """True when the last download got a live injury report."""
+    import json
+    try:
+        js = json.loads((feed_dir / "fetch_summary.json").read_text())
+        return int(js.get("injury_report_players") or 0) > 0
+    except (OSError, ValueError):
+        return False
+
+
 def ingest_feed(feed_dir: Path, as_of: date, lookahead_days: int = 7) -> dict:
     init_db()
     games = pd.read_csv(feed_dir / "games.csv", dtype={"game_id": str})
@@ -114,6 +124,15 @@ def ingest_feed(feed_dir: Path, as_of: date, lookahead_days: int = 7) -> dict:
             upcoming = upcoming.reset_index()
         _upsert(con, "games", pd.concat([played, upcoming])[GAME_COLS])
         _upsert(con, "team_box", box[BOX_COLS])
+        # The live injury report is a snapshot: a player who has dropped off it is
+        # available again. Clear upcoming (not yet started) games' rows before
+        # writing the fresh report, so returned players stop counting as out.
+        # Skip when the report download failed, so one bad fetch can't wipe it.
+        if _injury_report_ok(feed_dir):
+            pending = [g for g in upcoming["game_id"] if g not in set(started_ids)]
+            if pending:
+                con.execute(f"DELETE FROM injuries WHERE game_id IN ({','.join('?' * len(pending))})",
+                            pending)
         _upsert(con, "injuries", inj[INJ_COLS])
         after = con.execute("SELECT COUNT(*) FROM games WHERE home_score IS NOT NULL").fetchone()[0]
     return dict(new_results=after - before, upcoming=len(upcoming), as_of=as_of_s)
