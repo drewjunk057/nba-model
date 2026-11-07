@@ -3,9 +3,14 @@
   win     LightGBM classifier boosted FROM the market's vig-free win probability
           (it can only nudge the market, so it's never worse than it in testing)
   spread  LightGBM classifier  -> home_covers_prob
-  total   LightGBM regressor   -> predicted_total_points (+ over/under via residual sigma)
-  margin  LightGBM regressor on stats + who's missing, NO market inputs -> the
-          model's own point spread, used only for injury alerts
+  total   LightGBM regressor boosted FROM the market total (falls back to our
+          rating-based total) -> predicted_total_points (+ over/under via sigma).
+          Unanchored, it issued O/U picks that hit 50-52% in testing (below
+          the 52.4% break-even); anchored, it only moves off the line when the
+          stats strongly disagree.
+  margin  LightGBM regressor boosted FROM our rating-based spread, on stats +
+          who's missing, NO market inputs -> the model's own point spread, used
+          only for injury alerts
 
 Evaluation is walk-forward: hold out the most recent completed season,
 train on everything before it, early-stop on the season before that.
@@ -40,8 +45,10 @@ LGB_PARAMS = dict(
     subsample_freq=1, colsample_bytree=0.7, reg_lambda=2.0, verbose=-1, random_state=7,
 )
 
-# the win model only nudges the market, so it's kept small and heavily regularized
+# the anchored models only nudge their starting point, so they're kept small
+# and heavily regularized
 WIN_PARAMS = dict(LGB_PARAMS, num_leaves=7, min_child_samples=120, reg_lambda=10.0, colsample_bytree=0.5)
+ANCHORED = ("win", "total", "margin")
 
 
 def market_logit(d: pd.DataFrame) -> np.ndarray:
@@ -52,6 +59,17 @@ def market_logit(d: pd.DataFrame) -> np.ndarray:
     p = p.fillna(pd.Series(norm.cdf(-spread / 12.5), index=d.index)).fillna(0.5)
     p = p.clip(0.01, 0.99).values
     return np.log(p / (1 - p))
+
+
+def anchor(kind: str, d: pd.DataFrame) -> np.ndarray | None:
+    """Starting point each model is boosted from (raw score), or None."""
+    if kind == "win":
+        return market_logit(d)
+    if kind == "total":
+        return d["closing_total"].astype(float).fillna(d["internal_total"].astype(float)).fillna(225.0).values
+    if kind == "margin":                  # our own rating-based line: no market input
+        return -d["internal_spread"].astype(float).fillna(-2.8).values
+    return None
 
 
 # key features kept for drift monitoring (PSI)
@@ -109,7 +127,7 @@ def psi(ref, values):
 
 # --------------------------------------------------------------- fitting
 def _fit_lgb(kind, X, y, X_val=None, y_val=None, rounds=None, init=None, init_val=None):
-    params = dict(WIN_PARAMS if kind == "win" else LGB_PARAMS, n_estimators=rounds or 2000)
+    params = dict(WIN_PARAMS if kind in ANCHORED else LGB_PARAMS, n_estimators=rounds or 2000)
     model = lgb.LGBMRegressor(**params) if kind in REGRESSORS else lgb.LGBMClassifier(**params)
     import warnings
     with warnings.catch_warnings():              # eval_set works on every LightGBM 4.x
@@ -124,10 +142,8 @@ def _fit_lgb(kind, X, y, X_val=None, y_val=None, rounds=None, init=None, init_va
 
 
 def _predict(kind, model, X, init=None):
-    if kind == "win":
-        raw = model.predict(X, raw_score=True) + (0 if init is None else init)
-        return 1 / (1 + np.exp(-raw))
-    return model.predict(X) if kind in REGRESSORS else model.predict_proba(X)[:, 1]
+    raw = model.predict(X, raw_score=True) + (0 if init is None else init)
+    return raw if kind in REGRESSORS else 1 / (1 + np.exp(-raw))
 
 
 def _train_frame(gf, kind):
@@ -158,11 +174,11 @@ def evaluate(gf: pd.DataFrame) -> dict:
     for kind in KINDS:
         X, y, d = _train_frame(gf, kind)
         tr, es, te = d.season.isin(train_seasons), d.season == es_season, d.season == test_season
-        init = market_logit(d) if kind == "win" else None
+        init = anchor(kind, d)
         sub = (lambda mask: init[mask.values]) if init is not None else (lambda mask: None)
         m = _fit_lgb(kind, X[tr], y[tr], X[es], y[es], init=sub(tr), init_val=sub(es))
         best_rounds[kind] = int(m.best_iteration_ or m.n_estimators)
-        if kind == "win":
+        if kind in ANCHORED:
             best_rounds[kind] = max(best_rounds[kind], 20)
         # refit on train + early-stop season with the chosen number of rounds
         trall = tr | es
@@ -241,8 +257,8 @@ def train_production(gf: pd.DataFrame, report: dict, as_of: str | None = None) -
     scale = len(played) / max(1, len(played[played.season.isin(report["train_seasons"])]))
     for kind in KINDS:
         X, y, d = _train_frame(gf, kind)
-        rounds = max(20 if kind == "win" else 50, int(report["best_rounds"][kind] * min(scale, 1.3)))
-        m = _fit_lgb(kind, X, y, rounds=rounds, init=market_logit(d) if kind == "win" else None)
+        rounds = max(20 if kind in ANCHORED else 50, int(report["best_rounds"][kind] * min(scale, 1.3)))
+        m = _fit_lgb(kind, X, y, rounds=rounds, init=anchor(kind, d))
         m.booster_.save_model(str(vdir / f"{kind}.txt"))
         gain = pd.Series(m.booster_.feature_importance("gain"), index=FEATURE_SETS[kind])
         importances[kind] = (gain / gain.sum()).sort_values(ascending=False).head(20).round(4).to_dict()
@@ -254,7 +270,7 @@ def train_production(gf: pd.DataFrame, report: dict, as_of: str | None = None) -
         trained_through=str(played.date.max()), trained_as_of=as_of or datetime.now().date().isoformat(),
         n_train=n_train,
         features=FEATURE_SETS, sigma_total=report["sigma"], sigma_margin=report.get("sigma_margin"),
-        win_anchor="market",
+        win_anchor="market", anchored=list(ANCHORED),
         importances=importances,
         evaluation={k: v for k, v in report.items() if k != "backtest"},
         drift_reference={f: psi_bins(played[f].dropna().values) for f in DRIFT_FEATURES},
@@ -282,7 +298,9 @@ class ModelBundle:
                          for k in KINDS if (self.dir / f"{k}.txt").exists()}
         self.sigma = self.meta["sigma_total"]
         self.sigma_margin = self.meta.get("sigma_margin")
-        self.anchored = self.meta.get("win_anchor") == "market"
+        # older bundles anchor only the win model; newer ones list what they anchor
+        self.anchored = set(self.meta.get("anchored")
+                            or (["win"] if self.meta.get("win_anchor") == "market" else []))
         self.features = self.meta.get("features") or FEATURE_SETS
 
     def backtest(self):
@@ -294,8 +312,9 @@ class ModelBundle:
         for kind, booster in self.boosters.items():
             feats = self.features.get(kind, FEATURE_SETS[kind])
             X = rows[feats].astype(float)
-            if kind == "win" and self.anchored:
-                pred = 1 / (1 + np.exp(-(booster.predict(X, raw_score=True) + market_logit(rows))))
+            if kind in self.anchored:
+                raw = booster.predict(X, raw_score=True) + anchor(kind, rows)
+                pred = raw if kind in REGRESSORS else 1 / (1 + np.exp(-raw))
             else:
                 pred = booster.predict(X)
             contrib = booster.predict(X, pred_contrib=True)[:, :-1]   # last col = bias

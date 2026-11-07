@@ -11,7 +11,7 @@ absorbed yet. An alert fires when, for a game that hasn't tipped:
   2. the line has moved less than that impact since we first saw the news
      (UNPRICED_MIN points or more still unpriced); and
   3. the margin model (stats + who's missing, no market inputs) disagrees
-     with the current line by >= MIN_EDGE points toward the other team.
+     with the current line by >= MIN_EDGE (3) points toward the other team.
 
 Each alert is recorded once, at the line when it fired, and graded and
 compared with the closing line separately from the regular picks.
@@ -32,7 +32,7 @@ from .db import read_df, session
 log = logging.getLogger("alerts")
 MIN_IMPACT = 1.0      # points of team strength lost
 UNPRICED_MIN = 1.0    # points of that impact the line hasn't absorbed
-MIN_EDGE = 2.0        # model vs current line, points
+MIN_EDGE = 3.0        # model vs current line, points (3+ beat 2+ on line movement in 2024-25 and 2025-26)
 
 
 def _now():
