@@ -37,6 +37,8 @@ def _needs_retrain(as_of: date) -> bool:
     if not cur.exists():
         return True
     meta = ModelBundle().meta
+    if "anchored" not in meta:          # trained before the anchored total/margin models: retrain once
+        return True
     trained = date.fromisoformat(meta.get("trained_as_of", meta["trained_through"]))
     return (as_of - trained).days >= RETRAIN_EVERY_DAYS
 

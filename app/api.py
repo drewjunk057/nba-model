@@ -386,8 +386,52 @@ def prediction_log(limit: int = 200):
                 runs=json.loads(runs.to_json(orient="records")))
 
 
+def _clean(o):
+    """NaN/inf -> None, numpy scalars -> Python, so the response is always valid JSON."""
+    if isinstance(o, dict):
+        return {k: _clean(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_clean(v) for v in o]
+    if isinstance(o, np.generic):
+        o = o.item()
+    if isinstance(o, float) and not np.isfinite(o):
+        return None
+    return o
+
+
+def _record_status() -> dict:
+    """What this copy has done lately, shown under the record so a missing or
+    stale record can be diagnosed from the screen."""
+    st = dict(picks_logged=None, last_pick=None, last_update=None, model_version=None, app_version=None,
+              copy="development" if (DATA_DIR.parent / ".dev").exists() else "production")
+    try:
+        r = read_df("SELECT COUNT(*) n, MAX(predicted_at) last FROM prediction_log").iloc[0]
+        st.update(picks_logged=int(r.n), last_pick=r["last"])
+        runs = read_df("SELECT run_at, model_version FROM pipeline_runs ORDER BY run_at DESC LIMIT 1")
+        if len(runs):
+            st.update(last_update=runs.run_at.iat[0], model_version=runs.model_version.iat[0])
+    except Exception as e:
+        st["db_error"] = repr(e)
+    try:
+        st["app_version"] = (json.loads((DATA_DIR / "app_version.json").read_text()).get("sha") or "")[:7] or None
+    except Exception:
+        pass
+    return st
+
+
 @app.get("/api/record")
 def record():
+    try:
+        out = _record()
+    except Exception as e:                       # never let the record vanish silently
+        import logging, traceback
+        logging.getLogger("record").error("record failed:\n%s", traceback.format_exc())
+        out = dict(error=f"{type(e).__name__}: {e}", record=None, picks=[], pending=0, graded=0)
+    out["status"] = _record_status()
+    return _clean(out)
+
+
+def _record():
     """Our live record: the latest pick logged for each game before tip-off,
     graded against the line that was posted when the pick was made."""
     log = read_df(
