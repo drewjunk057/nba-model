@@ -71,6 +71,8 @@ nav button[aria-selected="true"] { color: var(--chalk); background: var(--panel)
 .detail h4 { font: 600 17px var(--display); margin: 0 0 8px; }
 .fouls { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .fouls td, .fouls th { font-size: 13px; }
+.teamfouls { margin: 0 0 8px; font-size: 14px; }
+.teamfouls .note { font-size: 13px; }
 .drv { display: grid; grid-template-columns: 1fr 70px; gap: 2px 8px; font-size: 14px; align-items: center; }
 .drv .name { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drv .imp { position: relative; height: 8px; background: var(--line); border-radius: 4px; }
@@ -339,14 +341,21 @@ function picksStrip(g) {
 
 function foulsBlock(g) {
   if (!g.fouls) return '';
+  const ord = n => n + ([, 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || 'th');
+  const teamLine = team => {
+    const t = (g.team_fouls || {})[team];
+    if (!t || !t.gp) return '';
+    return `<p class="teamfouls"><b>${t.fouls}</b> team fouls in ${t.gp} games · <b>${t.per_game}</b> per game
+      <span class="note">(${ord(t.rank)} most of ${t.teams} · league avg ${t.league_avg})</span></p>`;
+  };
   const tbl = team => {
     const list = g.fouls[team];
     if (list == null) return `<div><h4>${team} foul leaders</h4><p class="note">Foul data downloads with the next data update.</p></div>`;
     if (!list.length) return `<div><h4>${team} foul leaders</h4><p class="note">No games played yet this season.</p></div>`;
-    return `<div><h4>${team} foul leaders</h4><table><tr><th>Player</th><th>Fouls</th><th>GP</th><th>Per game</th><th>Fouled out</th></tr>
+    return `<div><h4>${team} fouls</h4>${teamLine(team)}<table><tr><th>Player</th><th>Fouls</th><th>GP</th><th>Per game</th><th>Fouled out</th></tr>
       ${list.map(p => `<tr><td>${p.player}</td><td class="n"><b>${p.fouls}</b></td><td class="n">${p.gp}</td><td class="n">${p.per_game}</td><td class="n">${p.fouled_out || '—'}</td></tr>`).join('')}</table></div>`;
   };
-  return `<div class="fouls">${tbl(g.away_team)}${tbl(g.home_team)}<p class="note" style="grid-column:1/-1;font-size:12px;margin:0">Personal fouls this season with this team, before this game.</p></div>`;
+  return `<div class="fouls">${tbl(g.away_team)}${tbl(g.home_team)}<p class="note" style="grid-column:1/-1;font-size:12px;margin:0">Fouls this season before this game. Player rows count only games played for this team.</p></div>`;
 }
 
 function outLine(team, list) {

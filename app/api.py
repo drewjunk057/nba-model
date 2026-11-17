@@ -226,13 +226,14 @@ def games(date: str):
     for g in payloads:
         if g["game_id"] in al:
             g["alert"] = al[g["game_id"]]
-    from .fouls import leaders
+    from .fouls import leaders, team_totals
     for g in payloads:
         try:
             g["fouls"] = {g["home_team"]: leaders(g["home_team"], g["season"], g["date"]),
                           g["away_team"]: leaders(g["away_team"], g["season"], g["date"])}
+            g["team_fouls"] = {t: team_totals(t, g["season"], g["date"]) for t in (g["home_team"], g["away_team"])}
         except Exception:                                      # synthetic data, missing cache
-            g["fouls"] = None
+            g["fouls"] = g["team_fouls"] = None
     ov = _overrides()
     for g in payloads:
         o = ov.get(g["game_id"])

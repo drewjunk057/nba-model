@@ -29,12 +29,12 @@ def _load(path: Path):
         with gzip.open(path, "rt", encoding="utf-8") as f:
             d = json.load(f)
         dates = {g["game_id"]: day for day, gs in (d.get("scoreboards") or {}).items() for g in gs}
-        rows = []                         # (date, team, player_id, player, fouls)
+        rows = []                         # (date, team, player_id, player, fouls, game_id)
         for gid, sm in (d.get("summaries") or {}).items():
             day = dates.get(gid)
             for p in sm.get("players") or []:
                 if day and "fouls" in p and not p.get("dnp") and (p.get("minutes") or 0) > 0:
-                    rows.append((day, p["team"], p["player_id"], p["player"], float(p["fouls"] or 0)))
+                    rows.append((day, p["team"], p["player_id"], p["player"], float(p["fouls"] or 0), gid))
         _cache[path.name] = dict(key=key, rows=rows)
     return _cache[path.name]["rows"]
 
@@ -46,7 +46,7 @@ def leaders(team: str, season: str, before: str, n: int = 5):
     if not rows:
         return None
     agg = {}
-    for day, t, pid, name, pf in rows:
+    for day, t, pid, name, pf, _ in rows:
         if t != team or day >= before:
             continue
         a = agg.setdefault(pid, dict(player=name, fouls=0, gp=0, fouled_out=0))
@@ -58,3 +58,24 @@ def leaders(team: str, season: str, before: str, n: int = 5):
         out.append(dict(player=a["player"], fouls=int(a["fouls"]), gp=a["gp"],
                         per_game=round(a["fouls"] / a["gp"], 1), fouled_out=a["fouled_out"]))
     return out[:n]
+
+
+def team_totals(team: str, season: str, before: str):
+    """Team fouls this season before `before`: total, games, per game, and
+    league rank by fouls per game (1 = most). None when no foul data."""
+    rows = _load(_season_file(season))
+    if not rows:
+        return None
+    fouls, games = {}, {}
+    for day, t, _, _, pf, gid in rows:
+        if day >= before:
+            continue
+        fouls[t] = fouls.get(t, 0) + pf
+        games.setdefault(t, set()).add(gid)
+    if team not in fouls:
+        return dict(fouls=0, gp=0, per_game=None, rank=None, teams=len(fouls))
+    pg = {t: fouls[t] / len(games[t]) for t in fouls}
+    order = sorted(pg, key=lambda t: -pg[t])
+    return dict(fouls=int(fouls[team]), gp=len(games[team]), per_game=round(pg[team], 1),
+                rank=order.index(team) + 1, teams=len(order),
+                league_avg=round(sum(pg.values()) / len(pg), 1))
