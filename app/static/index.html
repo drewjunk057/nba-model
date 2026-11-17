@@ -71,8 +71,8 @@ nav button[aria-selected="true"] { color: var(--chalk); background: var(--panel)
 .detail h4 { font: 600 17px var(--display); margin: 0 0 8px; }
 .fouls { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .fouls td, .fouls th { font-size: 13px; }
-.teamfouls { margin: 0 0 8px; font-size: 14px; }
-.teamfouls .note { font-size: 13px; }
+.teamfouls { margin: 0 0 14px; }
+.teamfouls .note { font-size: 12px; }
 .drv { display: grid; grid-template-columns: 1fr 70px; gap: 2px 8px; font-size: 14px; align-items: center; }
 .drv .name { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drv .imp { position: relative; height: 8px; background: var(--line); border-radius: 4px; }
@@ -345,8 +345,11 @@ function foulsBlock(g) {
   const teamLine = team => {
     const t = (g.team_fouls || {})[team];
     if (!t || !t.gp) return '';
-    return `<p class="teamfouls"><b>${t.fouls}</b> team fouls in ${t.gp} games · <b>${t.per_game}</b> per game
-      <span class="note">(${ord(t.rank)} most of ${t.teams} · league avg ${t.league_avg})</span></p>`;
+    const d = t.diff_per_game;
+    return `<table class="teamfouls"><tr><th></th><th>Per game</th><th>Total</th><th>League rank</th></tr>
+      <tr><td>Fouls committed</td><td class="n"><b>${t.per_game}</b></td><td class="n">${t.fouls}</td><td class="n">${ord(t.rank)} most</td></tr>
+      <tr><td>Fouls drawn</td><td class="n"><b>${t.drawn_per_game}</b></td><td class="n">${t.drawn}</td><td class="n">${ord(t.drawn_rank)} most</td></tr>
+      <tr><td>Net</td><td class="n ${d > 0 ? 'pos' : d < 0 ? 'neg' : ''}"><b>${d > 0 ? '+' : ''}${d}</b></td><td colspan="2" class="note">${t.gp} games · league avg ${t.league_avg} per game</td></tr></table>`;
   };
   const tbl = team => {
     const list = g.fouls[team];
@@ -355,7 +358,7 @@ function foulsBlock(g) {
     return `<div><h4>${team} fouls</h4>${teamLine(team)}<table><tr><th>Player</th><th>Fouls</th><th>GP</th><th>Per game</th><th>Fouled out</th></tr>
       ${list.map(p => `<tr><td>${p.player}</td><td class="n"><b>${p.fouls}</b></td><td class="n">${p.gp}</td><td class="n">${p.per_game}</td><td class="n">${p.fouled_out || '—'}</td></tr>`).join('')}</table></div>`;
   };
-  return `<div class="fouls">${tbl(g.away_team)}${tbl(g.home_team)}<p class="note" style="grid-column:1/-1;font-size:12px;margin:0">Fouls this season before this game. Player rows count only games played for this team.</p></div>`;
+  return `<div class="fouls">${tbl(g.away_team)}${tbl(g.home_team)}<p class="note" style="grid-column:1/-1;font-size:12px;margin:0">Fouls this season before this game. Drawn = fouls opponents were called for against this team. Net = drawn minus committed (positive is good). Player rows count only games played for this team.</p></div>`;
 }
 
 function outLine(team, list) {

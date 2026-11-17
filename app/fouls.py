@@ -60,22 +60,36 @@ def leaders(team: str, season: str, before: str, n: int = 5):
     return out[:n]
 
 
+
 def team_totals(team: str, season: str, before: str):
-    """Team fouls this season before `before`: total, games, per game, and
-    league rank by fouls per game (1 = most). None when no foul data."""
+    """Team fouls this season before `before`.
+    Committed = fouls the team's players were called for.
+    Drawn = fouls their opponents were called for in the same games.
+    Ranks are by per-game average among all teams (1 = most). None when no foul data."""
     rows = _load(_season_file(season))
     if not rows:
         return None
-    fouls, games = {}, {}
+    by_game = {}                                   # game_id -> {team: fouls}
     for day, t, _, _, pf, gid in rows:
-        if day >= before:
+        if day < before:
+            g = by_game.setdefault(gid, {})
+            g[t] = g.get(t, 0) + pf
+    com, drawn, gp = {}, {}, {}
+    for g in by_game.values():
+        if len(g) != 2:
             continue
-        fouls[t] = fouls.get(t, 0) + pf
-        games.setdefault(t, set()).add(gid)
-    if team not in fouls:
-        return dict(fouls=0, gp=0, per_game=None, rank=None, teams=len(fouls))
-    pg = {t: fouls[t] / len(games[t]) for t in fouls}
-    order = sorted(pg, key=lambda t: -pg[t])
-    return dict(fouls=int(fouls[team]), gp=len(games[team]), per_game=round(pg[team], 1),
-                rank=order.index(team) + 1, teams=len(order),
-                league_avg=round(sum(pg.values()) / len(pg), 1))
+        (a, fa), (b, fb) = g.items()
+        for t, mine, theirs in ((a, fa, fb), (b, fb, fa)):
+            com[t] = com.get(t, 0) + mine
+            drawn[t] = drawn.get(t, 0) + theirs
+            gp[t] = gp.get(t, 0) + 1
+    if team not in gp:
+        return dict(gp=0)
+    cpg = {t: com[t] / gp[t] for t in gp}
+    dpg = {t: drawn[t] / gp[t] for t in gp}
+    rank = lambda d: sorted(d, key=lambda t: -d[t]).index(team) + 1
+    return dict(gp=gp[team], teams=len(gp),
+                fouls=int(com[team]), per_game=round(cpg[team], 1), rank=rank(cpg),
+                drawn=int(drawn[team]), drawn_per_game=round(dpg[team], 1), drawn_rank=rank(dpg),
+                diff_per_game=round(dpg[team] - cpg[team], 1),
+                league_avg=round(sum(cpg.values()) / len(cpg), 1))
