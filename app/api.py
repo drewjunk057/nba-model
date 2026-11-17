@@ -226,6 +226,13 @@ def games(date: str):
     for g in payloads:
         if g["game_id"] in al:
             g["alert"] = al[g["game_id"]]
+    from .fouls import leaders
+    for g in payloads:
+        try:
+            g["fouls"] = {g["home_team"]: leaders(g["home_team"], g["season"], g["date"]),
+                          g["away_team"]: leaders(g["away_team"], g["season"], g["date"])}
+        except Exception:                                      # synthetic data, missing cache
+            g["fouls"] = None
     ov = _overrides()
     for g in payloads:
         o = ov.get(g["game_id"])

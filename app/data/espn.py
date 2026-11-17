@@ -282,16 +282,18 @@ def parse_summary(js: dict) -> dict:
             idx = {k: i for i, k in enumerate(keys)}
             i_min = idx.get("minutes", idx.get("MIN"))
             i_pts = idx.get("points", idx.get("PTS"))
+            i_pf = idx.get("fouls", idx.get("PF"))
             for ath in grp.get("athletes") or []:
                 st = ath.get("stats") or []
                 mins = _num(st[i_min]) if i_min is not None and i_min < len(st) else None
                 pts = _num(st[i_pts]) if i_pts is not None and i_pts < len(st) else None
+                pf = _num(st[i_pf]) if i_pf is not None and i_pf < len(st) else None
                 players.append(dict(
                     team=ab, player_id=str(_side(ath, "athlete", "id") or ""),
                     player=_side(ath, "athlete", "displayName") or "",
                     dnp=bool(ath.get("didNotPlay")) or not st,
                     reason=(ath.get("reason") or "").upper(),
-                    minutes=mins or 0.0, points=pts or 0.0))
+                    minutes=mins or 0.0, points=pts or 0.0, fouls=pf or 0.0))
 
     odds = parse_odds((js.get("pickcenter") or [None])[0])
     return dict(box=box, players=players, odds=odds)
@@ -361,7 +363,10 @@ def fetch(out_dir: Path, cache_dir: Path, seasons: list[int], today: date | None
                 sb[d.isoformat()] = games
         games = [g for d in days for g in sb.get(d.isoformat(), [])]
 
-        todo = [g["game_id"] for g in games if g["completed"] and g["game_id"] not in sm]
+        # current season: also re-fetch games cached before fouls were recorded
+        cur = yr == current_season_end_year(today)
+        todo = [g["game_id"] for g in games if g["completed"] and (
+            g["game_id"] not in sm or (cur and any("fouls" not in p for p in sm[g["game_id"]].get("players") or [])))]
         progress(f"{yr - 1}-{str(yr)[2:]}: {len(games)} games, fetching {len(todo)} box scores")
         done = 0
         with ThreadPoolExecutor(workers) as ex:

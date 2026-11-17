@@ -69,6 +69,8 @@ nav button[aria-selected="true"] { color: var(--chalk); background: var(--panel)
 .detail { display: none; padding: 4px 4px 22px; }
 .game.open .detail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
 .detail h4 { font: 600 17px var(--display); margin: 0 0 8px; }
+.fouls { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.fouls td, .fouls th { font-size: 13px; }
 .drv { display: grid; grid-template-columns: 1fr 70px; gap: 2px 8px; font-size: 14px; align-items: center; }
 .drv .name { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drv .imp { position: relative; height: 8px; background: var(--line); border-radius: 4px; }
@@ -283,6 +285,7 @@ function gameRow(g) {
     ${drivers('Why this win probability', p, g.drivers.win, true)}
     ${drivers('Why this spread lean', p, g.drivers.spread, true)}
     ${drivers('Why this total', p, g.drivers.total, false)}
+    ${foulsBlock(g)}
   </div></div>`;
 }
 
@@ -332,6 +335,18 @@ function picksStrip(g) {
   const lock = p.locked ? `<br><span style="font-weight:400;font-size:12px" title="Logged ${p.locked_at || ''} before tip-off. This is the pick the record grades.">locked at tip-off</span>` : '';
   const banner = g.alert ? `<div class="alertbar">⚡ <b>Injury edge.</b> ${g.alert.reason}</div>` : '';
   return `${banner}<div class="picks"><span class="lbl">Our picks${lock}</span>${out.join('')}</div>`;
+}
+
+function foulsBlock(g) {
+  if (!g.fouls) return '';
+  const tbl = team => {
+    const list = g.fouls[team];
+    if (list == null) return `<div><h4>${team} foul leaders</h4><p class="note">Foul data downloads with the next data update.</p></div>`;
+    if (!list.length) return `<div><h4>${team} foul leaders</h4><p class="note">No games played yet this season.</p></div>`;
+    return `<div><h4>${team} foul leaders</h4><table><tr><th>Player</th><th>Fouls</th><th>GP</th><th>Per game</th><th>Fouled out</th></tr>
+      ${list.map(p => `<tr><td>${p.player}</td><td class="n"><b>${p.fouls}</b></td><td class="n">${p.gp}</td><td class="n">${p.per_game}</td><td class="n">${p.fouled_out || '—'}</td></tr>`).join('')}</table></div>`;
+  };
+  return `<div class="fouls">${tbl(g.away_team)}${tbl(g.home_team)}<p class="note" style="grid-column:1/-1;font-size:12px;margin:0">Personal fouls this season with this team, before this game.</p></div>`;
 }
 
 function outLine(team, list) {
